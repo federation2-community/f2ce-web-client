@@ -25,4 +25,15 @@ npm run dev       # start the Vite dev server
 npm run build     # type-check + production build (dist/, rooted at / — served at client.federation2.com)
 npm run preview   # preview the production build locally
 npm test          # run the Vitest unit tests
+npm run test:e2e  # Playwright smoke test against a build/preview server (no engine; deploy CI)
 ```
+
+## Local full-stack dev/test harness
+
+`scripts/dev-stack.sh` runs the whole stack locally — `fed2d` (the game
+engine, from a sibling `fed2-community` checkout) + `f2ce-proxy` (from a
+sibling `fed-node` checkout) + this app's dev server — so you can catch
+browser-behavior bugs before deploying to client-test. See
+[`docs/local-dev.md`](docs/local-dev.md) for setup, env knobs, and the
+companion `npm run test:e2e:stack` Playwright smoke test that logs in and
+confirms Muxlet/f2ce-tools initializes.

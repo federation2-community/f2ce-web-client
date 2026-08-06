@@ -6,6 +6,11 @@ import { defineConfig, devices } from '@playwright/test';
 // the live connect/install path against the test server.
 export default defineConfig({
   testDir: './e2e',
+  // stack-smoke.spec.ts needs a live fed2d+proxy+dev-server trio (see
+  // playwright.stack.config.ts / `npm run test:e2e:stack`) — exclude it here
+  // so plain `npm run test:e2e` (used by deploy CI) doesn't try to run it
+  // against this config's engine-less build/preview server.
+  testIgnore: 'stack-smoke.spec.ts',
   webServer: {
     command: 'npm run build && npm run preview -- --port 4173 --strictPort',
     url: 'http://localhost:4173/',
