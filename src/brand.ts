@@ -1,6 +1,7 @@
 import type { BrandConfig } from '@mudlet/mudlet-web';
 
 import type { AppEnv } from './env';
+import { Landing } from './Landing';
 
 /**
  * The websocket endpoint drives two things at once:
@@ -51,6 +52,11 @@ export function buildBrand(env: AppEnv): BrandConfig {
         removable: false,
       },
     ],
+
+    // Custom landing: quick login for returning players + a "Create a new
+    // character" action that drives fed2d's interactive account-creation
+    // flow instead of auto-submitting credentials.
+    Landing,
 
     themes: [
       {

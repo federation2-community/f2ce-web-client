@@ -1,4 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// `Landing` pulls a real (value) import of `setSessionCredentials` from
+// `@mudlet/mudlet-web`, which in turn drags in the whole library bundle
+// (including its wasm-based Lua runtime) — fine in the browser/jsdom, but
+// this suite runs in the default node env and only cares about identity
+// (`b.Landing` is set), so stub the package rather than loading it for real.
+vi.mock('@mudlet/mudlet-web', () => ({ setSessionCredentials: vi.fn() }));
+
 import { buildBrand } from './brand';
 
 const env = {
@@ -38,5 +46,9 @@ describe('buildBrand', () => {
 
   it('links source for GPL', () => {
     expect(b.repoUrl).toContain('f2ce-web-client');
+  });
+
+  it('supplies a custom Landing for interactive character creation', () => {
+    expect(b.Landing).toBeDefined();
   });
 });
