@@ -19,6 +19,7 @@ const props = (): LandingProps => ({
 
 beforeEach(() => {
   vi.mocked(setSessionCredentials).mockClear();
+  localStorage.clear();
 });
 
 afterEach(cleanup);
@@ -37,7 +38,21 @@ describe('Landing', () => {
     expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', { account: 'Zaphod', password: 'secret' });
   });
 
-  it('opens a fresh connection with no staged credentials for a new character', () => {
+  it('remembers the last character name and prefills it', () => {
+    localStorage.setItem('f2ce:lastCharacter', 'Trillian');
+    render(<Landing {...props()} />);
+    expect((screen.getByLabelText(/character name/i) as HTMLInputElement).value).toBe('Trillian');
+  });
+
+  it('persists the character name on login', () => {
+    const p = props();
+    render(<Landing {...p} />);
+    fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Ford' } });
+    fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+    expect(localStorage.getItem('f2ce:lastCharacter')).toBe('Ford');
+  });
+
+  it('new-character auto-answers the Login: prompt with `new` and no password', () => {
     const p = props();
     render(<Landing {...p} />);
 
@@ -45,8 +60,6 @@ describe('Landing', () => {
 
     expect(p.ensureBrandProfile).toHaveBeenCalledWith();
     expect(p.openProfile).toHaveBeenCalledWith('conn-1', true);
-    expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', null);
-    // No login credentials were ever submitted on this path.
-    expect(setSessionCredentials).not.toHaveBeenCalledWith('conn-1', expect.objectContaining({ password: expect.anything() }));
+    expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', { account: 'new', password: '' });
   });
 });

@@ -26,11 +26,22 @@
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
 }
 
-/* The login form and the new-character block both render as cards. */
+/* Two cards side by side: new-character (left) + returning-player login (right).
+   Wraps to a stack on narrow screens. */
+.f2ce-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch; /* equal heights so the two cards line up */
+  gap: 18px;
+  width: 100%;
+  max-width: 780px;
+}
+
 .f2ce-landing form,
 .f2ce-landing .f2ce-landing-new {
-  width: 100%;
-  max-width: 380px;
+  flex: 1 1 300px;
+  max-width: 360px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -41,6 +52,19 @@
   border: 1px solid var(--border, #33333f);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+.f2ce-landing h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--fg, #e6e6ea);
+}
+
+/* Keep both cards' primary buttons aligned at the bottom edge. */
+.f2ce-landing form button[type='submit'],
+.f2ce-landing .f2ce-landing-new button {
+  margin-top: auto;
 }
 
 .f2ce-landing label {
