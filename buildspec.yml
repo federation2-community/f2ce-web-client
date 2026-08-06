@@ -4,13 +4,18 @@ version: 0.2
 # under its IAM service role (no GitHub-side credentials) and deploys the static
 # site to S3 + invalidates CloudFront.
 #
-# ENV-DRIVEN, ONE PROJECT PER ENVIRONMENT. The CodeBuild PROJECT supplies all of
-# these (intentionally NOT defaulted here, so a project can never deploy to the
-# wrong bucket via a stale default):
-#   VITE_WS_URL, VITE_PKG_URL, VITE_PKG_VERSION, S3_BUCKET, CF_DIST_ID
+# ENV-DRIVEN, ONE PROJECT PER ENVIRONMENT. The CodeBuild PROJECT supplies these
+# (intentionally NOT defaulted here, so a project can never deploy to the wrong
+# bucket via a stale default):
+#   VITE_WS_URL, S3_BUCKET, CF_DIST_ID
+# Plus ONE of:
+#   PKG_TRACK=stable|prerelease  -> resolve the f2ce-tools version+URL from the
+#                                   GitHub Releases API at build time (newest
+#                                   release of that channel), OR
+#   VITE_PKG_URL + VITE_PKG_VERSION -> pin an exact package (legacy/manual).
 #
-#   test project  (webhook: test branch)  -> client-test.federation2.com, ws-test, rolling prerelease
-#   prod project  (webhook: master branch) -> client.federation2.com,     ws prod, production release
+#   test project  (webhook: test branch)   -> client-test.federation2.com, ws-test, PKG_TRACK=prerelease
+#   prod project  (webhook: master branch) -> client.federation2.com,      ws prod, PKG_TRACK=stable
 
 phases:
   install:
@@ -20,14 +25,43 @@ phases:
       - npm ci
   build:
     commands:
-      # Fail fast if the project didn't supply the build-time config.
+      # Resolve, guard, test, and build in ONE shell so PKG_TRACK's exported
+      # VITE_PKG_* reach `npm run build` regardless of CodeBuild's per-command
+      # shell behavior.
       - |
+        set -e
+        # When PKG_TRACK is set, resolve the f2ce-tools package version+URL from
+        # the GitHub Releases API so the client always ships the newest release
+        # of that channel. The manifest version is plain semver, but the stable
+        # tag carries a leading "v" (v3.2.0) while prereleases don't (3.2.4) —
+        # strip it so mudlet-web's version compare matches (else it reinstalls
+        # every open). GitHub is cross-origin, so the asset is fetched through
+        # the same ws->http proxy the client already uses (derived from VITE_WS_URL).
+        if [ -n "${PKG_TRACK:-}" ]; then
+          [ -n "${VITE_WS_URL:-}" ] || { echo "ERROR: VITE_WS_URL required when PKG_TRACK is set" >&2; exit 1; }
+          api="https://api.github.com/repos/federation2-community/f2ce-tools"
+          if [ "$PKG_TRACK" = "stable" ]; then
+            tag=$(curl -sfL "$api/releases/latest" | python3 -c "import sys,json;print(json.load(sys.stdin).get('tag_name',''))")
+          elif [ "$PKG_TRACK" = "prerelease" ]; then
+            tag=$(curl -sfL "$api/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin);pre=[r for r in rs if r.get('prerelease')];print(pre[0]['tag_name'] if pre else '')")
+          else
+            echo "ERROR: PKG_TRACK must be 'stable' or 'prerelease' (got '$PKG_TRACK')" >&2; exit 1
+          fi
+          [ -n "$tag" ] || { echo "ERROR: could not resolve latest $PKG_TRACK f2ce-tools release" >&2; exit 1; }
+          asset="https://github.com/federation2-community/f2ce-tools/releases/download/${tag}/f2ce-tools.mpackage"
+          proxy=$(printf '%s' "$VITE_WS_URL" | sed -e 's#^wss://#https://#' -e 's#^ws://#http://#')
+          enc=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$asset")
+          export VITE_PKG_VERSION="${tag#v}"
+          export VITE_PKG_URL="${proxy}?url=${enc}"
+          echo "PKG_TRACK=$PKG_TRACK -> f2ce-tools $tag (VITE_PKG_VERSION=${tag#v})"
+        fi
+        # Fail fast if the build-time config still isn't set (pinned or resolved).
         for v in VITE_WS_URL VITE_PKG_URL VITE_PKG_VERSION; do
           eval "val=\${$v:-}"
           [ -n "$val" ] || { echo "ERROR: $v not set on the CodeBuild project" >&2; exit 1; }
         done
-      - npm test
-      - npm run build
+        npm test
+        npm run build
   post_build:
     commands:
       - |
