@@ -74,4 +74,35 @@ describe('Landing', () => {
     expect(p.openProfile).toHaveBeenCalledWith('conn-1', true);
     expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', { account: 'new', password: '' });
   });
+
+  it('forgot password sends `forgot password <name>` in account and the email as password', () => {
+    const p = props();
+    render(<Landing {...p} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /forgot password\?/i }));
+    fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Zaphod' } });
+    fireEvent.change(screen.getByLabelText(/registered email/i), { target: { value: 'z@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /temporary password/i }));
+
+    expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', {
+      account: 'forgot password Zaphod',
+      password: 'z@example.com',
+    });
+    expect(p.openProfile).toHaveBeenCalledWith('conn-1', true);
+  });
+
+  it('forgot username sends `forgot name` in account and the email as password', () => {
+    const p = props();
+    render(<Landing {...p} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /forgot your character name\?/i }));
+    fireEvent.change(screen.getByLabelText(/registered email/i), { target: { value: 'z@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /email my character name/i }));
+
+    expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', {
+      account: 'forgot name',
+      password: 'z@example.com',
+    });
+    expect(p.openProfile).toHaveBeenCalledWith('conn-1', true);
+  });
 });

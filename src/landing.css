@@ -170,3 +170,37 @@
   color: var(--accent, #6fe3a6);
   font-family: 'Consolas', 'Monaco', monospace;
 }
+
+/* Description line inside the login/forgot card (mirrors the new-card copy). */
+.f2ce-landing .f2ce-landing-login p {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-dim, #9a9aa6);
+}
+
+/* "Forgot password?" / "Back to log in" — text links, not buttons. */
+.f2ce-forgot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.f2ce-landing button.f2ce-linkbtn {
+  width: auto;
+  padding: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--accent, #6fe3a6);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.f2ce-landing button.f2ce-linkbtn:hover {
+  filter: none;
+  color: var(--fg, #e6e6ea);
+}
