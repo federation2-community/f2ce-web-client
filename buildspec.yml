@@ -13,8 +13,8 @@ env:
     CF_DIST_ID: "E3AT4FJ48938JC"
     # Test defaults; set to wss://ws.federation2.com/ + the matching pkg URL for prod.
     VITE_WS_URL: "wss://ws-test.federation2.com/"
-    VITE_PKG_VERSION: "3.2.3"
-    VITE_PKG_URL: "https://ws-test.federation2.com/?url=https%3A%2F%2Fgithub.com%2Ffederation2-community%2Ff2ce-tools%2Freleases%2Fdownload%2F3.2.3%2Ff2ce-tools.mpackage"
+    VITE_PKG_VERSION: "3.2.4"
+    VITE_PKG_URL: "https://ws-test.federation2.com/?url=https%3A%2F%2Fgithub.com%2Ffederation2-community%2Ff2ce-tools%2Freleases%2Fdownload%2F3.2.4%2Ff2ce-tools.mpackage"
 
 phases:
   install:
