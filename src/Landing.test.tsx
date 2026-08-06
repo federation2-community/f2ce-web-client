@@ -17,12 +17,24 @@ const props = (): LandingProps => ({
   openSettings: vi.fn(),
 });
 
+// happy-dom v20 doesn't ship localStorage; stub a minimal Map-backed one so the
+// component's reads/writes work and the prefill/persist tests can assert.
+const store = new Map<string, string>();
 beforeEach(() => {
   vi.mocked(setSessionCredentials).mockClear();
-  localStorage.clear();
+  store.clear();
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+    clear: () => store.clear(),
+  });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  vi.unstubAllGlobals();
+  cleanup();
+});
 
 describe('Landing', () => {
   it('logs in a returning player with the entered name and password', () => {
