@@ -33,6 +33,11 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
 
   return (
     <div className="f2ce-landing">
+      <img
+        className="f2ce-logo"
+        src="https://federation2.com/assets/img/logo.png"
+        alt="Federation 2 — Community Edition"
+      />
       <form onSubmit={login}>
         <div>
           <label htmlFor="f2ce-landing-name">Character name</label>
@@ -57,7 +62,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
         <button type="submit">Log in</button>
       </form>
 
-      <div>
+      <div className="f2ce-landing-new">
         <button type="button" onClick={createCharacter}>
           Create a new character
         </button>

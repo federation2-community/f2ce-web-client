@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MudletWebApp } from '@mudlet/mudlet-web';
 import '@mudlet/mudlet-web/styles.css';
+import './landing.css';
 
 import { buildBrand } from './brand';
 import { readEnv } from './env';

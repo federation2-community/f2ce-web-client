@@ -36,11 +36,11 @@ export function buildBrand(env: AppEnv): BrandConfig {
     // Single shared profile — no per-account profile switching.
     profileMode: 'single',
 
-    // Hide mudlet-web's stock toolbar buttons (Scripts…Settings) — this is a
-    // dedicated single-purpose UI, not a general MUD client. Kept:
-    // `connection` (Reconnect/Disconnect), `record`, `close`.
+    // Hide mudlet-web's stock toolbar buttons — this is a dedicated
+    // single-purpose UI, not a general MUD client. Kept: `connection`
+    // (Reconnect/Disconnect) and `close`.
     toolbar: {
-      hide: ['scripts', 'files', 'map', 'logs', 'docs', 'reportBug', 'settings'],
+      hide: ['scripts', 'files', 'map', 'logs', 'docs', 'reportBug', 'settings', 'record'],
     },
 
     packages: [
