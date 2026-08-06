@@ -101,6 +101,16 @@
   color: var(--fg-dim, #9a9aa6);
 }
 
+/* Match desktop Mudlet: Geyser panel labels CLIP overflow instead of wrapping.
+   `.label` is mudlet-web's Geyser user-label class (positioned, overflow:hidden)
+   — where f2ce-tools paints its table panels. Desktop Qt QLabels clip by
+   default and f2ce-tools' tables rely on that; mudlet-web defaults to wrapping.
+   white-space inherits, so this cascades to the table cells. The main terminal
+   and miniconsoles (chat, etc.) use different classes and keep wrapping. */
+.label {
+  white-space: nowrap;
+}
+
 /* Toolbar brand: show the Fed2 logo instead of the green appName text.
    appName is a bare text node inside .connection-brand, so collapse the text
    with font-size:0; the logo <img> keeps its explicit size. */
