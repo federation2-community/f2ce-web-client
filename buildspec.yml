@@ -21,15 +21,20 @@ phases:
   build:
     commands:
       # Fail fast if the project didn't supply the build-time config.
-      - : "${VITE_WS_URL:?VITE_WS_URL not set on the CodeBuild project}"
-      - : "${VITE_PKG_URL:?VITE_PKG_URL not set on the CodeBuild project}"
-      - : "${VITE_PKG_VERSION:?VITE_PKG_VERSION not set on the CodeBuild project}"
+      - |
+        for v in VITE_WS_URL VITE_PKG_URL VITE_PKG_VERSION; do
+          eval "val=\${$v:-}"
+          [ -n "$val" ] || { echo "ERROR: $v not set on the CodeBuild project" >&2; exit 1; }
+        done
       - npm test
       - npm run build
   post_build:
     commands:
-      - : "${S3_BUCKET:?S3_BUCKET not set on the CodeBuild project}"
-      - : "${CF_DIST_ID:?CF_DIST_ID not set on the CodeBuild project}"
+      - |
+        for v in S3_BUCKET CF_DIST_ID; do
+          eval "val=\${$v:-}"
+          [ -n "$val" ] || { echo "ERROR: $v not set on the CodeBuild project" >&2; exit 1; }
+        done
       # Two-pass sync so .wasm keeps its content-type (wasmoon/PCRE2 need it).
       - aws s3 sync dist/ "s3://$S3_BUCKET/" --delete --exclude '*.wasm'
       - aws s3 sync dist/ "s3://$S3_BUCKET/" --exclude '*' --include '*.wasm' --content-type application/wasm
