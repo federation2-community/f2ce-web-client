@@ -10,7 +10,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run --exclude 'e2e/**'",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:stack": "playwright test --config=playwright.stack.config.ts",
+    "dev:stack": "scripts/dev-stack.sh"
   },
   "dependencies": {
     "@mudlet/mudlet-web": "0.3.1",
