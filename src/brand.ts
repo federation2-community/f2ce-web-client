@@ -49,6 +49,9 @@ export function buildBrand(env: AppEnv): BrandConfig {
         : ['scripts', 'files', 'map', 'logs', 'docs', 'reportBug', 'settings', 'record'],
     },
 
+    // Setting `packages` REPLACES mudlet-web's stock defaults (run-lua-code +
+    // a mapper) rather than adding to them — so anything we want has to be
+    // listed here explicitly.
     packages: [
       {
         name: 'f2ce-tools',
@@ -57,6 +60,20 @@ export function buildBrand(env: AppEnv): BrandConfig {
         version: env.VITE_PKG_VERSION,
         removable: false,
       },
+      // Test build only: mudlet-web's stock `run-lua-code` utility (adds a
+      // command-line alias to run arbitrary Lua). Handy while iterating; kept
+      // off prod. The .mpackage is vendored into public/ (copied from
+      // @mudlet/mudlet-web) so it's fetched same-origin, no proxy/CORS hop.
+      ...(env.showDevToolbar
+        ? [
+            {
+              name: 'run-lua-code',
+              filename: 'run-lua-code.mpackage',
+              url: `${import.meta.env.BASE_URL}run-lua-code.mpackage`,
+              removable: true,
+            },
+          ]
+        : []),
     ],
 
     // Custom landing: quick login for returning players + a "Create a new

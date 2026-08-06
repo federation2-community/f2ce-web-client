@@ -2,9 +2,10 @@ export interface AppEnv {
   VITE_WS_URL: string;
   VITE_PKG_URL: string;
   VITE_PKG_VERSION: string;
-  // When true, show mudlet-web's stock power-user toolbar buttons (scripts,
-  // files, settings, …). Set on the test CodeBuild project only; unset on
-  // prod, so prod keeps the minimal branded toolbar. Optional — defaults false.
+  // Marks the test/dev build (VITE_SHOW_TOOLBAR=true, set on the test CodeBuild
+  // project only). Enables test-only conveniences: mudlet-web's stock power-user
+  // toolbar buttons (scripts, files, settings, …) and the bundled `run-lua-code`
+  // package. Unset on prod, so prod stays minimal. Optional — defaults false.
   showDevToolbar: boolean;
 }
 

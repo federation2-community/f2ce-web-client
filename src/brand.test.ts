@@ -40,6 +40,14 @@ describe('buildBrand', () => {
     expect(p.url).toBe(env.VITE_PKG_URL);
   });
 
+  it('omits run-lua-code on prod, includes it on the test build', () => {
+    // prod (showDevToolbar false): only f2ce-tools
+    expect(b.packages!.map((p) => p.name)).toEqual(['f2ce-tools']);
+    // test build: run-lua-code added back (stock default we replaced)
+    const dev = buildBrand({ ...env, showDevToolbar: true });
+    expect(dev.packages!.map((p) => p.name)).toContain('run-lua-code');
+  });
+
   it('hides the stock toolbar buttons Scripts..Settings by default (prod)', () => {
     expect(b.toolbar!.hide).toContain('scripts');
     expect(b.toolbar!.hide).toContain('settings');
