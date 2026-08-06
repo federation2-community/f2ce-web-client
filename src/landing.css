@@ -127,13 +127,16 @@
   width: auto;
   max-width: 200px;
 }
-/* Only the wordmark span that sits right after the toolbar logo (not, e.g., an
-   About-dialog wordmark), plus the small gray connection-name duplicate. */
+/* Hide the green appName wordmark that sits right after the toolbar logo (not,
+   e.g., an About-dialog wordmark). */
 .brand-logo + .brand {
   display: none;
 }
+/* The gray connection-name span is ALSO the toolbar's flex:1 spacer that pushes
+   the disconnect/close actions to the right — so keep it in layout (don't
+   display:none it) and just make its text invisible. */
 .toolbar-connection-name {
-  display: none;
+  color: transparent;
 }
 
 .f2ce-landing code {
