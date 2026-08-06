@@ -114,14 +114,26 @@
 /* Toolbar brand: show the Fed2 logo instead of the green appName text.
    appName is a bare text node inside .connection-brand, so collapse the text
    with font-size:0; the logo <img> keeps its explicit size. */
+/* Two brand contexts render logoUrl + the appName text:
+   - offline/connection screen: div.connection-brand [ img.connection-brand-logo, {appName text} ]
+   - connected toolbar:        img.brand-logo, span.brand {appName}, span.toolbar-connection-name
+   Show only the logo; hide the wordmark text + the redundant connection-name.  */
 .connection-brand {
-  font-size: 0;
-  gap: 0;
+  font-size: 0; /* collapses the bare appName text node (offline screen) */
 }
-.connection-brand-logo {
-  height: 26px;
+.connection-brand-logo,
+.brand-logo {
+  height: 24px;
   width: auto;
-  max-width: 220px;
+  max-width: 200px;
+}
+/* Only the wordmark span that sits right after the toolbar logo (not, e.g., an
+   About-dialog wordmark), plus the small gray connection-name duplicate. */
+.brand-logo + .brand {
+  display: none;
+}
+.toolbar-connection-name {
+  display: none;
 }
 
 .f2ce-landing code {
