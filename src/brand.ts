@@ -19,6 +19,9 @@ import { Landing } from './Landing';
 export function buildBrand(env: AppEnv): BrandConfig {
   return {
     appName: 'Federation 2',
+    // Show the Fed2 wordmark logo in the toolbar brand area. appName renders as
+    // bare text beside it; landing.css collapses that text so only the logo shows.
+    logoUrl: 'https://federation2.com/assets/img/logo.png',
     tagline: 'Federation 2, in your browser',
     aboutText:
       'A branded, white-label build of Mudlet Web for Federation 2 Community Edition — a text-based, telnet-style multiplayer space-trading MUD.',

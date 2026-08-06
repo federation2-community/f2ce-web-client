@@ -101,6 +101,19 @@
   color: var(--fg-dim, #9a9aa6);
 }
 
+/* Toolbar brand: show the Fed2 logo instead of the green appName text.
+   appName is a bare text node inside .connection-brand, so collapse the text
+   with font-size:0; the logo <img> keeps its explicit size. */
+.connection-brand {
+  font-size: 0;
+  gap: 0;
+}
+.connection-brand-logo {
+  height: 26px;
+  width: auto;
+  max-width: 220px;
+}
+
 .f2ce-landing code {
   padding: 1px 6px;
   border-radius: 4px;
