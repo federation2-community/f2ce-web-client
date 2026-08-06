@@ -1,0 +1,45 @@
+version: 0.2
+
+# AWS CodeBuild spec — matches how the other Fed2 repos deploy (GitHub callback
+# triggers CodeBuild, which builds in-account under its IAM service role; no
+# GitHub-side credentials). Builds the static site and deploys it to the
+# client.federation2.com bucket + CloudFront distribution.
+#
+# The build is env-driven so test/prod differ without code changes. Override
+# these on the CodeBuild project (or a per-environment project):
+env:
+  variables:
+    S3_BUCKET: "client.federation2.com"
+    CF_DIST_ID: "E3AT4FJ48938JC"
+    # Test defaults; set to wss://ws.federation2.com/ + the matching pkg URL for prod.
+    VITE_WS_URL: "wss://ws-test.federation2.com/"
+    VITE_PKG_VERSION: "3.2.3"
+    VITE_PKG_URL: "https://ws-test.federation2.com/?url=https%3A%2F%2Fgithub.com%2Ffederation2-community%2Ff2ce-tools%2Freleases%2Fdownload%2F3.2.3%2Ff2ce-tools.mpackage"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - npm ci
+  build:
+    commands:
+      - npm test
+      - npm run build
+  post_build:
+    commands:
+      # Two-pass sync so .wasm keeps its content-type (wasmoon/PCRE2 need it).
+      - aws s3 sync dist/ "s3://$S3_BUCKET/" --delete --exclude '*.wasm'
+      - aws s3 sync dist/ "s3://$S3_BUCKET/" --exclude '*' --include '*.wasm' --content-type application/wasm
+      - |
+        if [ -n "$CF_DIST_ID" ]; then
+          aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths '/*'
+        else
+          echo "No CF_DIST_ID set, skipping CloudFront invalidation"
+        fi
+
+artifacts:
+  files:
+    - './**/*'
+  base-directory: dist
+  name: client.federation2.com

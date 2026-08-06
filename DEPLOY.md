@@ -46,14 +46,22 @@ the live game:
 (On **test** the proxy is currently permissive, so no proxy change is needed
 there.)
 
-## CI (GitHub Actions) — not yet wired
+## CI (AWS CodeBuild, GitHub callback) — matches the other Fed2 repos
 
-`.github/workflows/deploy.yml` builds/tests on push to `main` then deploys to
-S3 + invalidates CloudFront. It needs, and does not yet have:
-- an auth path — either a GitHub **OIDC** provider + IAM role (set
-  `secrets.AWS_ROLE_ARN`), or IAM access keys as repo secrets (and switch the
-  workflow's `configure-aws-credentials` to key-based);
-- secrets `S3_BUCKET=client.federation2.com`, `CF_DIST_ID=E3AT4FJ48938JC`;
-- vars `VITE_WS_URL`, `VITE_PKG_URL`, `VITE_PKG_VERSION`.
+Deploys the same way `fedWeb`/the game do: a **GitHub callback triggers AWS
+CodeBuild**, which builds and deploys **in-account under its IAM service role**
+— no GitHub-side AWS credentials (no OIDC provider, no access keys). The build
+recipe is `buildspec.yml` (build → two-pass S3 sync → CloudFront invalidation).
 
-Until wired, deploy manually with `scripts/deploy.sh`.
+To wire it (one-time, AWS side):
+1. Create a CodeBuild project (or CodePipeline with a GitHub source) pointed at
+   this repo's `main`, using `buildspec.yml`.
+2. Give the CodeBuild **service role** permissions scoped to this deploy:
+   `s3:PutObject`/`s3:DeleteObject`/`s3:ListBucket` on the
+   `client.federation2.com` bucket, and `cloudfront:CreateInvalidation` on
+   distribution `E3AT4FJ48938JC`.
+3. Set project env vars for the target environment (`VITE_WS_URL`,
+   `VITE_PKG_URL`, `VITE_PKG_VERSION`, `S3_BUCKET`, `CF_DIST_ID`) — the
+   `buildspec.yml` carries test defaults; override for prod.
+
+Until the CodeBuild project exists, deploy manually with `scripts/deploy.sh`.
