@@ -1,20 +1,16 @@
 version: 0.2
 
-# AWS CodeBuild spec — matches how the other Fed2 repos deploy (GitHub callback
-# triggers CodeBuild, which builds in-account under its IAM service role; no
-# GitHub-side credentials). Builds the static site and deploys it to the
-# client.federation2.com bucket + CloudFront distribution.
+# AWS CodeBuild spec — GitHub callback triggers CodeBuild, which builds in-account
+# under its IAM service role (no GitHub-side credentials) and deploys the static
+# site to S3 + invalidates CloudFront.
 #
-# The build is env-driven so test/prod differ without code changes. Override
-# these on the CodeBuild project (or a per-environment project):
-env:
-  variables:
-    S3_BUCKET: "client.federation2.com"
-    CF_DIST_ID: "E3AT4FJ48938JC"
-    # Test defaults; set to wss://ws.federation2.com/ + the matching pkg URL for prod.
-    VITE_WS_URL: "wss://ws-test.federation2.com/"
-    VITE_PKG_VERSION: "3.2.4"
-    VITE_PKG_URL: "https://ws-test.federation2.com/?url=https%3A%2F%2Fgithub.com%2Ffederation2-community%2Ff2ce-tools%2Freleases%2Fdownload%2F3.2.4%2Ff2ce-tools.mpackage"
+# ENV-DRIVEN, ONE PROJECT PER ENVIRONMENT. The CodeBuild PROJECT supplies all of
+# these (intentionally NOT defaulted here, so a project can never deploy to the
+# wrong bucket via a stale default):
+#   VITE_WS_URL, VITE_PKG_URL, VITE_PKG_VERSION, S3_BUCKET, CF_DIST_ID
+#
+#   test project  (webhook: test branch)  -> client-test.federation2.com, ws-test, rolling prerelease
+#   prod project  (webhook: master branch) -> client.federation2.com,     ws prod, production release
 
 phases:
   install:
@@ -24,22 +20,22 @@ phases:
       - npm ci
   build:
     commands:
+      # Fail fast if the project didn't supply the build-time config.
+      - : "${VITE_WS_URL:?VITE_WS_URL not set on the CodeBuild project}"
+      - : "${VITE_PKG_URL:?VITE_PKG_URL not set on the CodeBuild project}"
+      - : "${VITE_PKG_VERSION:?VITE_PKG_VERSION not set on the CodeBuild project}"
       - npm test
       - npm run build
   post_build:
     commands:
+      - : "${S3_BUCKET:?S3_BUCKET not set on the CodeBuild project}"
+      - : "${CF_DIST_ID:?CF_DIST_ID not set on the CodeBuild project}"
       # Two-pass sync so .wasm keeps its content-type (wasmoon/PCRE2 need it).
       - aws s3 sync dist/ "s3://$S3_BUCKET/" --delete --exclude '*.wasm'
       - aws s3 sync dist/ "s3://$S3_BUCKET/" --exclude '*' --include '*.wasm' --content-type application/wasm
-      - |
-        if [ -n "$CF_DIST_ID" ]; then
-          aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths '/*'
-        else
-          echo "No CF_DIST_ID set, skipping CloudFront invalidation"
-        fi
+      - aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths '/*'
 
 artifacts:
   files:
     - './**/*'
   base-directory: dist
-  name: client.federation2.com
