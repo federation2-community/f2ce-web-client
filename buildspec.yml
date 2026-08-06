@@ -30,25 +30,31 @@ phases:
       # shell behavior.
       - |
         set -e
-        # When PKG_TRACK is set, resolve the f2ce-tools package version+URL from
-        # the GitHub Releases API so the client always ships the newest release
-        # of that channel. The manifest version is plain semver, but the stable
-        # tag carries a leading "v" (v3.2.0) while prereleases don't (3.2.4) —
-        # strip it so mudlet-web's version compare matches (else it reinstalls
-        # every open). GitHub is cross-origin, so the asset is fetched through
-        # the same ws->http proxy the client already uses (derived from VITE_WS_URL).
+        # When PKG_TRACK is set, resolve the newest f2ce-tools tag of that
+        # channel and ship it. Uses `git ls-remote` (git protocol) rather than
+        # the GitHub REST API on purpose: unauthenticated api.github.com calls
+        # from CodeBuild's shared egress IP get rate-limited (403 -> empty),
+        # whereas ls-remote is not rate-limited and needs no credentials.
+        # Channel is read from the tag convention: stable releases are
+        # v-prefixed (v3.2.0), prereleases are bare semver (3.2.4). The manifest
+        # version is plain semver, so the leading "v" is stripped for
+        # VITE_PKG_VERSION (else mudlet-web's version compare mismatches and
+        # reinstalls every open). GitHub is cross-origin, so the asset is
+        # fetched through the same ws->http proxy the client already uses
+        # (derived from VITE_WS_URL).
         if [ -n "${PKG_TRACK:-}" ]; then
           [ -n "${VITE_WS_URL:-}" ] || { echo "ERROR: VITE_WS_URL required when PKG_TRACK is set" >&2; exit 1; }
-          api="https://api.github.com/repos/federation2-community/f2ce-tools"
+          repo="https://github.com/federation2-community/f2ce-tools"
+          tags=$(git ls-remote --tags --refs "$repo" | sed 's#.*refs/tags/##')
           if [ "$PKG_TRACK" = "stable" ]; then
-            tag=$(curl -sfL "$api/releases/latest" | python3 -c "import sys,json;print(json.load(sys.stdin).get('tag_name',''))")
+            tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]' | sort -V | tail -1)
           elif [ "$PKG_TRACK" = "prerelease" ]; then
-            tag=$(curl -sfL "$api/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin);pre=[r for r in rs if r.get('prerelease')];print(pre[0]['tag_name'] if pre else '')")
+            tag=$(printf '%s\n' "$tags" | grep -E '^[0-9]+\.[0-9]+' | sort -V | tail -1)
           else
             echo "ERROR: PKG_TRACK must be 'stable' or 'prerelease' (got '$PKG_TRACK')" >&2; exit 1
           fi
-          [ -n "$tag" ] || { echo "ERROR: could not resolve latest $PKG_TRACK f2ce-tools release" >&2; exit 1; }
-          asset="https://github.com/federation2-community/f2ce-tools/releases/download/${tag}/f2ce-tools.mpackage"
+          [ -n "$tag" ] || { echo "ERROR: could not resolve latest $PKG_TRACK f2ce-tools tag" >&2; exit 1; }
+          asset="${repo}/releases/download/${tag}/f2ce-tools.mpackage"
           proxy=$(printf '%s' "$VITE_WS_URL" | sed -e 's#^wss://#https://#' -e 's#^ws://#http://#')
           enc=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$asset")
           export VITE_PKG_VERSION="${tag#v}"
