@@ -14,6 +14,7 @@ const env = {
   VITE_PKG_VERSION: '3.2.3',
   VITE_PKG_URL:
     'https://ws-test.federation2.com/?url=https%3A%2F%2Fgithub.com%2Ffederation2-community%2Ff2ce-tools%2Freleases%2Fdownload%2Fv3.2.3%2Ff2ce-tools.mpackage',
+  showDevToolbar: false,
 };
 
 describe('buildBrand', () => {
@@ -39,9 +40,14 @@ describe('buildBrand', () => {
     expect(p.url).toBe(env.VITE_PKG_URL);
   });
 
-  it('hides the stock toolbar buttons Scripts..Settings', () => {
+  it('hides the stock toolbar buttons Scripts..Settings by default (prod)', () => {
     expect(b.toolbar!.hide).toContain('scripts');
     expect(b.toolbar!.hide).toContain('settings');
+  });
+
+  it('restores the stock toolbar buttons when showDevToolbar is set (test build)', () => {
+    const dev = buildBrand({ ...env, showDevToolbar: true });
+    expect(dev.toolbar!.hide).toEqual([]);
   });
 
   it('links source for GPL', () => {

@@ -39,11 +39,14 @@ export function buildBrand(env: AppEnv): BrandConfig {
     // Single shared profile — no per-account profile switching.
     profileMode: 'single',
 
-    // Hide mudlet-web's stock toolbar buttons — this is a dedicated
+    // Hide mudlet-web's stock toolbar buttons on prod — this is a dedicated
     // single-purpose UI, not a general MUD client. Kept: `connection`
-    // (Reconnect/Disconnect) and `close`.
+    // (Reconnect/Disconnect) and `close`. On the test build (showDevToolbar)
+    // they're restored so we can reach scripts/files/settings while iterating.
     toolbar: {
-      hide: ['scripts', 'files', 'map', 'logs', 'docs', 'reportBug', 'settings', 'record'],
+      hide: env.showDevToolbar
+        ? []
+        : ['scripts', 'files', 'map', 'logs', 'docs', 'reportBug', 'settings', 'record'],
     },
 
     packages: [
