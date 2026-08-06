@@ -22,7 +22,7 @@ change in a way that could affect the connect path.
    accepted origin. If it rejects the browser's `Origin` header, the WS handshake will
    fail before any GMCP negotiation happens.
 3. `npm run dev` (or `npm run build && npm run preview`) and open the app at
-   `/play/beta/`.
+   `/`.
 
 ## Checklist
 

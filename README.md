@@ -22,7 +22,7 @@ npm install
 
 ```bash
 npm run dev       # start the Vite dev server
-npm run build     # type-check + production build (dist/, rooted at /play/beta/)
+npm run build     # type-check + production build (dist/, rooted at / — served at client.federation2.com)
 npm run preview   # preview the production build locally
 npm test          # run the Vitest unit tests
 ```
