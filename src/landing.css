@@ -204,3 +204,18 @@
   filter: none;
   color: var(--fg, #e6e6ea);
 }
+
+/* Landing-local confirmation for the forgot-password / forgot-username forms
+   (see Landing.tsx's headless MudSession flow). Deliberately neutral, not
+   red/error-styled — this covers both the engine's friendly "we've emailed
+   you" success message and the generic "couldn't reach the server" fallback. */
+.f2ce-forgot-notice {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg, #e6e6ea);
+  background: var(--bg-surface, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--border, #33333f);
+  border-radius: 6px;
+}
