@@ -15,6 +15,7 @@ const env = {
   VITE_PKG_URL:
     'https://ws-test.federation2.com/?url=https%3A%2F%2Fgithub.com%2Ffederation2-community%2Ff2ce-tools%2Freleases%2Fdownload%2Fv3.2.3%2Ff2ce-tools.mpackage',
   showDevToolbar: false,
+  gaId: '',
 };
 
 describe('buildBrand', () => {
