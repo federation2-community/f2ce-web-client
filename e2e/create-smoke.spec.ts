@@ -149,7 +149,10 @@ test.describe('Char.Create (one-shot GMCP create)', () => {
     const submit = page.getByRole('button', { name: /^create character$/i });
     await expect(submit).toBeEnabled();
     await submit.click();
-    await expect(page.locator('.f2ce-field-error')).toContainText(/already taken/i);
+    // The "already taken" message shows on the live name-check line; the
+    // field-level duplicate is intentionally suppressed (see the
+    // duplicate-message fix). Submit stays blocked on the form regardless.
+    await expect(page.locator('.f2ce-namecheck-taken')).toContainText(/already taken/i);
     await expect(page.locator('#f2ce-create-name')).toBeVisible();
     await expect(page.getByText(/Fed2 Community Edition/i)).toHaveCount(0);
   });
@@ -233,6 +236,10 @@ test.describe('Char.Create (one-shot GMCP create)', () => {
     await page.locator('#f2ce-create-email').fill('');
     await expect(page.locator('.f2ce-namecheck-available')).toBeVisible({ timeout: 10_000 });
     await submit.click();
+
+    // A blank email now raises a confirmation first; continue without one.
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button', { name: /continue without email/i }).click();
 
     await expect(page.getByText(/Fed2 Community Edition/i).first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/You can see .*exit/i).first()).toBeVisible({ timeout: 15_000 });
