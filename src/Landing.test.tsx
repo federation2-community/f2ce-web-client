@@ -343,6 +343,34 @@ describe('Landing', () => {
       });
       expect(screen.getByText(/available/i)).toBeTruthy();
     });
+
+    // Regression: a taken name used to surface the message twice — once from
+    // the live name-check line and again from the field-level validation error
+    // after a submit attempt. Only the live-check line should show.
+    it('shows a single "name taken" message, not a duplicate field error', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm();
+
+      // Live CheckName for the current name comes back "taken".
+      fireEvent.blur(screen.getByLabelText(/^character name$/i));
+      expect(mockSessions).toHaveLength(1);
+      act(() => {
+        mockSessions[0].events.emit('gmcp.negotiated');
+        mockSessions[0].events.emit('gmcp', {
+          path: 'Char.Create.CheckName.Result',
+          value: { name: 'Zaphod', available: false, reason: 'taken' },
+        });
+      });
+
+      // A submit attempt would also produce a field-level "taken" error; it
+      // must not double up with the live-check line (which stays visible).
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+
+      const takenMsgs = screen.getAllByText(/already taken/i);
+      expect(takenMsgs).toHaveLength(1);
+      expect(takenMsgs[0].textContent).toMatch(/that name is already taken/i);
+    });
   });
 
   it('forgot password drives a headless MudSession with the right credentials and shows the confirmation, not an error modal', async () => {

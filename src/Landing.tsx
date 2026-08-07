@@ -686,7 +686,13 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                     {nameCheck.status === 'invalid' && '✗ Not a valid character name'}
                   </p>
                 )}
-                {displayCreateErrors.name && <p className="f2ce-field-error">{displayCreateErrors.name}</p>}
+                {/* Suppress the field-level "taken" error when the live
+                    name-check above is already showing it for this name —
+                    otherwise both lines say the same thing. Other name
+                    errors (bad format, server-origin dup) still render. */}
+                {displayCreateErrors.name && !nameTaken && (
+                  <p className="f2ce-field-error">{displayCreateErrors.name}</p>
+                )}
               </div>
 
               <div>
