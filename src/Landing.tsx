@@ -676,6 +676,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                   }}
                   onBlur={checkNameNow}
                   autoComplete="off"
+                  aria-invalid={!!displayCreateErrors.name}
                 />
                 {nameCheck?.name === liveCreateFields.name && (
                   <p className={`f2ce-namecheck f2ce-namecheck-${nameCheck.status}`} role="status">
@@ -700,6 +701,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                   }}
                   placeholder="human, vulcan, droid, grue, or anything you invent"
                   autoComplete="off"
+                  aria-invalid={!!displayCreateErrors.race}
                 />
                 {displayCreateErrors.race && <p className="f2ce-field-error">{displayCreateErrors.race}</p>}
               </div>
@@ -715,6 +717,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                     clearServerError('password');
                   }}
                   autoComplete="new-password"
+                  aria-invalid={!!displayCreateErrors.password}
                 />
                 {displayCreateErrors.password && (
                   <p className="f2ce-field-error">{displayCreateErrors.password}</p>
@@ -729,6 +732,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                   value={createConfirmPassword}
                   onChange={(event) => setCreateConfirmPassword(event.target.value)}
                   autoComplete="new-password"
+                  aria-invalid={!!displayCreateErrors.confirmPassword}
                 />
                 {displayCreateErrors.confirmPassword && (
                   <p className="f2ce-field-error">{displayCreateErrors.confirmPassword}</p>
@@ -736,7 +740,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
               </div>
 
               <div>
-                <label htmlFor="f2ce-create-email">Email (optional)</label>
+                <label htmlFor="f2ce-create-email">Email</label>
                 <input
                   id="f2ce-create-email"
                   type="email"
@@ -746,6 +750,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                     clearServerError('email');
                   }}
                   autoComplete="email"
+                  aria-invalid={!!displayCreateErrors.email}
                 />
                 {displayCreateErrors.email && <p className="f2ce-field-error">{displayCreateErrors.email}</p>}
               </div>
@@ -777,6 +782,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                     type="number"
                     value={createStrength}
                     onChange={(event) => setCreateStrength(event.target.value)}
+                    aria-invalid={!!displayCreateErrors.stats}
                   />
                 </div>
                 <div className="f2ce-stat-tile">
@@ -786,6 +792,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                     type="number"
                     value={createStamina}
                     onChange={(event) => setCreateStamina(event.target.value)}
+                    aria-invalid={!!displayCreateErrors.stats}
                   />
                 </div>
                 <div className="f2ce-stat-tile">
@@ -795,6 +802,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                     type="number"
                     value={createDexterity}
                     onChange={(event) => setCreateDexterity(event.target.value)}
+                    aria-invalid={!!displayCreateErrors.stats}
                   />
                 </div>
                 {/* Read-only: intelligence is derived (140 minus the other

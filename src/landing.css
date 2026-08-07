@@ -319,9 +319,22 @@
 }
 
 .f2ce-field-error {
-  margin: 4px 0 0;
-  font-size: 12px;
+  margin: 5px 0 0;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--error, #ff6b6b);
+}
+
+/* Highlight the offending field itself, not just the message below it. */
+.f2ce-landing input[aria-invalid='true'] {
+  border-color: var(--error, #ff6b6b);
+  background: var(--error-bg, rgba(255, 107, 107, 0.09));
+}
+
+.f2ce-landing input[aria-invalid='true']:focus {
+  outline: none;
+  border-color: var(--error, #ff6b6b);
+  box-shadow: 0 0 0 2px var(--error-glow, rgba(255, 107, 107, 0.3));
 }
 
 .f2ce-namecheck {
