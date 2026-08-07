@@ -232,9 +232,13 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
   // validation messages start showing (so the form isn't red before they've
   // typed anything).
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  // Set when an otherwise-valid submit has a blank email: we warn about the
+  // account-recovery/support tradeoff before actually creating the character.
+  const [noEmailPromptOpen, setNoEmailPromptOpen] = useState(false);
   const [nameCheck, setNameCheck] = useState<NameCheckState | null>(null);
   const createNameRef = useRef(createName);
   createNameRef.current = createName;
+  const emailInputRef = useRef<HTMLInputElement>(null);
   const nameCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const switchMode = (next: Mode) => {
@@ -348,6 +352,19 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createName, mode]);
+
+  // Escape dismisses the no-email prompt (same as "Provide an email").
+  useEffect(() => {
+    if (!noEmailPromptOpen) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setNoEmailPromptOpen(false);
+        emailInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [noEmailPromptOpen]);
 
   const checkNameNow = () => {
     if (!NAME_RE.test(createName)) return;
@@ -482,8 +499,29 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
     if (Object.keys(errors).length > 0) {
       return;
     }
+    // Everything else is valid but no email was given — email is optional, but
+    // warn about the recovery/support tradeoff and let them add one before we
+    // actually create the character.
+    if (fields.email.length === 0) {
+      setNoEmailPromptOpen(true);
+      return;
+    }
     setServerErrors({});
     submitCreate(fields);
+  };
+
+  // "Continue without email" from the no-email prompt: create as-is (a blank
+  // email is sent to the engine as the "skip" sentinel — see submitCreate).
+  const confirmCreateWithoutEmail = () => {
+    setNoEmailPromptOpen(false);
+    setServerErrors({});
+    submitCreate(currentCreateFields());
+  };
+
+  // "Provide an email" from the prompt: back to the form, email field focused.
+  const dismissNoEmailPrompt = () => {
+    setNoEmailPromptOpen(false);
+    emailInputRef.current?.focus();
   };
 
   // Editing a field invalidates any stale server-origin error for it.
@@ -746,9 +784,10 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
               </div>
 
               <div>
-                <label htmlFor="f2ce-create-email">Email</label>
+                <label htmlFor="f2ce-create-email">Email (optional)</label>
                 <input
                   id="f2ce-create-email"
+                  ref={emailInputRef}
                   type="email"
                   value={createEmail}
                   onChange={(event) => {
@@ -849,6 +888,32 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
           </form>
         )}
       </div>
+
+      {noEmailPromptOpen && (
+        <div className="f2ce-modal-overlay" role="presentation" onClick={dismissNoEmailPrompt}>
+          <div
+            className="f2ce-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="f2ce-no-email-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="f2ce-no-email-title">Create without an email?</h2>
+            <p>
+              If you choose not to provide an email, we can't help you recover your account or
+              provide support outside the game. You can add one now, or continue without.
+            </p>
+            <div className="f2ce-modal-actions">
+              <button type="button" onClick={dismissNoEmailPrompt}>
+                Provide an email
+              </button>
+              <button type="button" className="f2ce-modal-secondary" onClick={confirmCreateWithoutEmail}>
+                Continue without email
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

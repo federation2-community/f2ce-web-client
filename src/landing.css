@@ -370,6 +370,73 @@
   border-radius: 6px;
 }
 
+/* No-email confirmation dialog (see Landing.tsx's noEmailPrompt). Overlays the
+   whole landing so it reads as a modal decision, not an inline note. */
+.f2ce-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.f2ce-modal {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: rgba(14, 14, 22, 0.98);
+  border: 1px solid var(--border, #33333f);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.f2ce-modal h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--fg, #e6e6ea);
+}
+
+.f2ce-modal p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-dim, #c3c3cc);
+}
+
+.f2ce-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.f2ce-modal-actions button {
+  flex: 1 1 auto;
+}
+
+/* Primary (default button styling) = the safe path, "Provide an email".
+   Secondary = "Continue without email" — muted so it doesn't read as the
+   recommended action. */
+.f2ce-modal-actions button:first-child {
+  background: var(--accent, #2fbe78);
+  color: var(--btn-primary-text, #05271a);
+}
+
+.f2ce-modal-actions button.f2ce-modal-secondary {
+  background: transparent;
+  color: var(--fg-dim, #9a9aa6);
+  border-color: var(--border, #33333f);
+}
+
 /* Narrow viewports: drop the creation form's paired fields (and stat tiles)
    to a single column rather than overflowing the card's width. */
 @media (max-width: 620px) {

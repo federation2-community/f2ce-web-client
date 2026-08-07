@@ -170,7 +170,13 @@ describe('Landing', () => {
       expect(mockSessions).toHaveLength(0);
     });
 
-    it('email is optional: a blank email passes validation and is sent as "skip" (the engine no-email sentinel)', () => {
+    it('labels the email field optional', () => {
+      const p = props();
+      openCreateForm(p);
+      expect(screen.getByLabelText(/email \(optional\)/i)).toBeTruthy();
+    });
+
+    it('email is optional: a blank email opens the no-email confirmation instead of submitting outright', () => {
       const p = props();
       openCreateForm(p);
       fillValidCreateForm();
@@ -178,7 +184,22 @@ describe('Landing', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
 
+      // Valid form, but no email — the confirmation is shown and nothing is
+      // created yet (not a validation error, either).
       expect(screen.queryByText(/enter a valid email/i)).toBeNull();
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      expect(mockSessions).toHaveLength(0);
+    });
+
+    it('no-email confirmation: "Continue without email" creates and sends "skip"', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm();
+      fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /continue without email/i }));
+
       expect(mockSessions).toHaveLength(1);
       act(() => {
         mockSessions[0].events.emit('gmcp.negotiated');
@@ -187,6 +208,32 @@ describe('Landing', () => {
         (mockSessions[0].sendGmcpRaw as ReturnType<typeof vi.fn>).mock.calls[0][0].replace('Char.Create ', ''),
       );
       expect(sent.email).toBe('skip');
+    });
+
+    it('no-email confirmation: "Provide an email" dismisses and creates nothing', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm();
+      fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+      expect(screen.getByRole('dialog')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: /provide an email/i }));
+
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(mockSessions).toHaveLength(0);
+      expect(screen.getByRole('heading', { name: /create a new character/i })).toBeTruthy();
+    });
+
+    it('a provided email creates immediately, no confirmation dialog', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm(); // includes zaphod@example.com
+
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(mockSessions).toHaveLength(1);
     });
 
     it('rejects a malformed (non-blank) email', () => {
