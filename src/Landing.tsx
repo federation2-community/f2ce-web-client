@@ -112,8 +112,10 @@ function validateCreateFields(
     errors.confirmPassword = 'Passwords do not match.';
   }
 
-  if (fields.email.length < 8 || !EMAIL_RE.test(fields.email)) {
-    errors.email = 'Please enter a valid email address.';
+  // Email is the one optional field (the engine accepts "skip" at creation —
+  // see submitCreate's payload build). Only validate format when non-blank.
+  if (fields.email.length > 0 && !EMAIL_RE.test(fields.email)) {
+    errors.email = 'Enter a valid email address, or leave this field blank.';
   }
 
   if (!RACE_RE.test(fields.race)) {
@@ -184,6 +186,20 @@ interface NameCheckState {
  *
  * The last character name logged in with is remembered (localStorage) and
  * prefilled.
+ *
+ * BUGFIX NOTE (live-browser testing found "Create character" did nothing):
+ * the submit `<button>` used to carry `disabled={!canSubmitCreate}`, gated on
+ * the same client-side validation used for inline messages. A disabled button
+ * fires no `onSubmit`, so a player looking at a form that *looked* fillable —
+ * most commonly because email was (wrongly) required, or a stat/password
+ * rule wasn't yet satisfied — got zero feedback: no error text, no request,
+ * nothing. The fix is to never disable the button on validity (only while a
+ * submit is in flight); `submitCreateForm` now always runs, sets
+ * `submitAttempted`, and either shows the inline errors or proceeds. Email is
+ * also now genuinely optional (the engine only treats the literal string
+ * `"skip"` as no-email, so a blank field is translated to that on the wire —
+ * see `submitCreate`), which was the other half of "a filled-looking form
+ * couldn't submit."
  */
 export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
   type Mode = 'login' | 'forgotPassword' | 'forgotName' | 'create';
@@ -375,7 +391,12 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
           JSON.stringify({
             account: fields.name,
             password: fields.password,
-            email: fields.email,
+            // The engine (Login::ValidateAndCreateAccount) only treats the
+            // literal string "skip" as "no email" — an empty string fails its
+            // format check and comes back as a field error. Email is optional
+            // client-side (see validateCreateFields), so translate a blank
+            // field to "skip" here rather than relaxing the server rule.
+            email: fields.email.length > 0 ? fields.email : 'skip',
             race: fields.race,
             gender: fields.gender,
             strength: fields.strength,
@@ -445,7 +466,6 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
   const liveCreateFields = currentCreateFields();
   const nameTaken = nameCheck?.name === liveCreateFields.name && nameCheck.status === 'taken';
   const liveCreateErrors = validateCreateFields(liveCreateFields, nameTaken);
-  const canSubmitCreate = Object.keys(liveCreateErrors).length === 0 && !createSubmitting;
   // Client-side validation messages only show once a submit has been
   // attempted (so the form isn't red before the player's typed anything);
   // a server-origin field error (e.g. a race-condition dup name) always wins.
@@ -627,146 +647,183 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
         )}
 
         {mode === 'create' && (
-          <form className="f2ce-landing-create" onSubmit={submitCreateForm}>
+          // noValidate: hand every field's validation to validateCreateFields
+          // so our inline messages are the single source of truth. Without
+          // this, the browser's native constraint validation (e.g.
+          // type="email" with a non-empty malformed value) silently
+          // swallows the submit event before onSubmit ever runs — no
+          // request, no error, nothing — which reproduces as exactly the
+          // "Create character does nothing" bug (issue #7) whenever the
+          // native validation bubble can't be seen (e.g. while the layout
+          // was clipped — issue #1).
+          <form className="f2ce-landing-create" onSubmit={submitCreateForm} noValidate>
             <h2>Create a new character</h2>
-            <p>140 stat points to distribute — strength, stamina and dexterity; intelligence is whatever's left.</p>
 
-            <div>
-              <label htmlFor="f2ce-create-name">Character name</label>
-              <input
-                id="f2ce-create-name"
-                type="text"
-                value={createName}
-                onChange={(event) => {
-                  setCreateName(event.target.value);
-                  clearServerError('name');
-                }}
-                onBlur={checkNameNow}
-                autoComplete="off"
-              />
-              {nameCheck?.name === liveCreateFields.name && (
-                <p className={`f2ce-namecheck f2ce-namecheck-${nameCheck.status}`} role="status">
-                  {nameCheck.status === 'checking' && 'Checking availability…'}
-                  {nameCheck.status === 'available' && '✓ Available'}
-                  {nameCheck.status === 'taken' && '✗ That name is already taken'}
-                  {nameCheck.status === 'invalid' && '✗ Not a valid character name'}
-                </p>
-              )}
-              {displayCreateErrors.name && <p className="f2ce-field-error">{displayCreateErrors.name}</p>}
+            {/* Two fields per row (name/race, password/confirm, email/gender) —
+                the wider two-column card (see .f2ce-landing-create in
+                landing.css) is what lets every field + the submit button fit
+                on screen without vertical cutoff. */}
+            <div className="f2ce-create-grid">
+              <div>
+                <label htmlFor="f2ce-create-name">Character name</label>
+                <input
+                  id="f2ce-create-name"
+                  type="text"
+                  value={createName}
+                  onChange={(event) => {
+                    setCreateName(event.target.value);
+                    clearServerError('name');
+                  }}
+                  onBlur={checkNameNow}
+                  autoComplete="off"
+                />
+                {nameCheck?.name === liveCreateFields.name && (
+                  <p className={`f2ce-namecheck f2ce-namecheck-${nameCheck.status}`} role="status">
+                    {nameCheck.status === 'checking' && 'Checking availability…'}
+                    {nameCheck.status === 'available' && '✓ Available'}
+                    {nameCheck.status === 'taken' && '✗ That name is already taken'}
+                    {nameCheck.status === 'invalid' && '✗ Not a valid character name'}
+                  </p>
+                )}
+                {displayCreateErrors.name && <p className="f2ce-field-error">{displayCreateErrors.name}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="f2ce-create-race">Race</label>
+                <input
+                  id="f2ce-create-race"
+                  type="text"
+                  value={createRace}
+                  onChange={(event) => {
+                    setCreateRace(event.target.value);
+                    clearServerError('race');
+                  }}
+                  placeholder="human, vulcan, droid, grue, or anything you invent"
+                  autoComplete="off"
+                />
+                {displayCreateErrors.race && <p className="f2ce-field-error">{displayCreateErrors.race}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="f2ce-create-password">Password</label>
+                <input
+                  id="f2ce-create-password"
+                  type="password"
+                  value={createPassword}
+                  onChange={(event) => {
+                    setCreatePassword(event.target.value);
+                    clearServerError('password');
+                  }}
+                  autoComplete="new-password"
+                />
+                {displayCreateErrors.password && (
+                  <p className="f2ce-field-error">{displayCreateErrors.password}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="f2ce-create-confirm-password">Confirm password</label>
+                <input
+                  id="f2ce-create-confirm-password"
+                  type="password"
+                  value={createConfirmPassword}
+                  onChange={(event) => setCreateConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+                {displayCreateErrors.confirmPassword && (
+                  <p className="f2ce-field-error">{displayCreateErrors.confirmPassword}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="f2ce-create-email">Email (optional)</label>
+                <input
+                  id="f2ce-create-email"
+                  type="email"
+                  value={createEmail}
+                  onChange={(event) => {
+                    setCreateEmail(event.target.value);
+                    clearServerError('email');
+                  }}
+                  autoComplete="email"
+                />
+                {displayCreateErrors.email && <p className="f2ce-field-error">{displayCreateErrors.email}</p>}
+              </div>
+
+              <fieldset className="f2ce-gender">
+                <legend>Gender</legend>
+                {(['male', 'female', 'neuter'] as const).map((option) => (
+                  <label key={option} className="f2ce-gender-option">
+                    <input
+                      type="radio"
+                      name="f2ce-create-gender"
+                      value={option}
+                      checked={createGender === option}
+                      onChange={() => setCreateGender(option)}
+                    />
+                    {option.charAt(0).toUpperCase() + option.slice(1)}
+                  </label>
+                ))}
+              </fieldset>
             </div>
-
-            <div>
-              <label htmlFor="f2ce-create-password">Password</label>
-              <input
-                id="f2ce-create-password"
-                type="password"
-                value={createPassword}
-                onChange={(event) => {
-                  setCreatePassword(event.target.value);
-                  clearServerError('password');
-                }}
-                autoComplete="new-password"
-              />
-              {displayCreateErrors.password && <p className="f2ce-field-error">{displayCreateErrors.password}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="f2ce-create-confirm-password">Confirm password</label>
-              <input
-                id="f2ce-create-confirm-password"
-                type="password"
-                value={createConfirmPassword}
-                onChange={(event) => setCreateConfirmPassword(event.target.value)}
-                autoComplete="new-password"
-              />
-              {displayCreateErrors.confirmPassword && (
-                <p className="f2ce-field-error">{displayCreateErrors.confirmPassword}</p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="f2ce-create-email">Email</label>
-              <input
-                id="f2ce-create-email"
-                type="email"
-                value={createEmail}
-                onChange={(event) => {
-                  setCreateEmail(event.target.value);
-                  clearServerError('email');
-                }}
-                autoComplete="email"
-              />
-              {displayCreateErrors.email && <p className="f2ce-field-error">{displayCreateErrors.email}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="f2ce-create-race">Race</label>
-              <input
-                id="f2ce-create-race"
-                type="text"
-                value={createRace}
-                onChange={(event) => {
-                  setCreateRace(event.target.value);
-                  clearServerError('race');
-                }}
-                placeholder="human, vulcan, droid, grue, or anything you invent"
-                autoComplete="off"
-              />
-              {displayCreateErrors.race && <p className="f2ce-field-error">{displayCreateErrors.race}</p>}
-            </div>
-
-            <fieldset className="f2ce-gender">
-              <legend>Gender</legend>
-              {(['male', 'female', 'neuter'] as const).map((option) => (
-                <label key={option} className="f2ce-gender-option">
-                  <input
-                    type="radio"
-                    name="f2ce-create-gender"
-                    value={option}
-                    checked={createGender === option}
-                    onChange={() => setCreateGender(option)}
-                  />
-                  {option.charAt(0).toUpperCase() + option.slice(1)}
-                </label>
-              ))}
-            </fieldset>
 
             <fieldset className="f2ce-stats">
               <legend>Stats — 140 points to distribute (20-70 each)</legend>
-              <div className="f2ce-stat-row">
-                <label htmlFor="f2ce-create-strength">Strength</label>
-                <input
-                  id="f2ce-create-strength"
-                  type="number"
-                  value={createStrength}
-                  onChange={(event) => setCreateStrength(event.target.value)}
-                />
-              </div>
-              <div className="f2ce-stat-row">
-                <label htmlFor="f2ce-create-stamina">Stamina</label>
-                <input
-                  id="f2ce-create-stamina"
-                  type="number"
-                  value={createStamina}
-                  onChange={(event) => setCreateStamina(event.target.value)}
-                />
-              </div>
-              <div className="f2ce-stat-row">
-                <label htmlFor="f2ce-create-dexterity">Dexterity</label>
-                <input
-                  id="f2ce-create-dexterity"
-                  type="number"
-                  value={createDexterity}
-                  onChange={(event) => setCreateDexterity(event.target.value)}
-                />
+              <div className="f2ce-stat-tiles">
+                <div className="f2ce-stat-tile">
+                  <label htmlFor="f2ce-create-strength">Strength</label>
+                  <input
+                    id="f2ce-create-strength"
+                    type="number"
+                    value={createStrength}
+                    onChange={(event) => setCreateStrength(event.target.value)}
+                  />
+                </div>
+                <div className="f2ce-stat-tile">
+                  <label htmlFor="f2ce-create-stamina">Stamina</label>
+                  <input
+                    id="f2ce-create-stamina"
+                    type="number"
+                    value={createStamina}
+                    onChange={(event) => setCreateStamina(event.target.value)}
+                  />
+                </div>
+                <div className="f2ce-stat-tile">
+                  <label htmlFor="f2ce-create-dexterity">Dexterity</label>
+                  <input
+                    id="f2ce-create-dexterity"
+                    type="number"
+                    value={createDexterity}
+                    onChange={(event) => setCreateDexterity(event.target.value)}
+                  />
+                </div>
+                {/* Read-only: intelligence is derived (140 minus the other
+                    three), never user-settable — see derivedIntelligence. */}
+                <div className="f2ce-stat-tile f2ce-stat-tile-readonly">
+                  <label htmlFor="f2ce-create-intelligence">Intelligence</label>
+                  <input
+                    id="f2ce-create-intelligence"
+                    type="text"
+                    value={intelligencePreview ?? '—'}
+                    readOnly
+                    disabled
+                    aria-readonly="true"
+                  />
+                </div>
               </div>
               <p className="f2ce-stat-budget">
-                Intelligence (derived): {intelligencePreview ?? '—'} · Total: {pointsUsed} / {STAT_BUDGET}
+                Total: {pointsUsed} / {STAT_BUDGET}
               </p>
               {displayCreateErrors.stats && <p className="f2ce-field-error">{displayCreateErrors.stats}</p>}
             </fieldset>
 
-            <button type="submit" disabled={!canSubmitCreate}>
+            {/* Deliberately NOT disabled by client-side validity: a disabled
+                button gives a clicking player zero feedback (this was the
+                root cause of "Create character does nothing" — see the
+                Landing.tsx class doc comment). It's only disabled mid-flight
+                to prevent a double submit; an invalid click instead runs
+                validation and surfaces inline field errors below. */}
+            <button type="submit" disabled={createSubmitting}>
               {createSubmitting ? 'Creating…' : 'Create character'}
             </button>
 

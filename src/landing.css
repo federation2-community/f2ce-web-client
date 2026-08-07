@@ -3,7 +3,12 @@
    fallbacks so it still looks right if a variable is absent. */
 
 .f2ce-landing {
-  min-height: 100%;
+  /* mudlet-web's #root is `height:100%; overflow:hidden` (the terminal owns
+     its own internal scroll areas) — without an explicit height + overflow
+     here, content taller than the viewport (the creation form, on a short
+     window) was silently clipped top and bottom instead of scrolling. */
+  height: 100%;
+  overflow-y: auto;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -52,6 +57,16 @@
   border: 1px solid var(--border, #33333f);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* The creation form has ~9 fields (vs. login's 2) — give it its own wider,
+   two-column-wide card instead of squeezing everything into the narrow
+   single-column login width. Fields pair up in .f2ce-create-grid below and
+   the stat tiles run in one row, so the whole form is short enough to fit a
+   normal viewport without relying on the scroll fallback above. */
+.f2ce-landing .f2ce-landing-create {
+  flex: 1 1 620px;
+  max-width: 640px;
 }
 
 .f2ce-landing h2 {
@@ -228,9 +243,22 @@
   color: var(--fg-dim, #9a9aa6);
 }
 
+/* Two fields per row on the wider creation card (name/race, password/confirm,
+   email/gender) — see .f2ce-landing-create above. Wraps to one column on
+   narrow screens, same as .f2ce-cards. */
+.f2ce-create-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 14px 18px;
+}
+
 .f2ce-gender {
   display: flex;
+  align-items: center;
   gap: 14px;
+  /* Sits in a grid cell next to the email field; the fieldset default block
+     layout would otherwise stretch full-width and look out of place. */
+  align-self: start;
 }
 
 .f2ce-gender-option {
@@ -247,26 +275,46 @@
   width: auto;
 }
 
-.f2ce-stat-row {
+/* Strength/Stamina/Dexterity/Intelligence as four same-size tiles in a row
+   (issue: Intelligence needed to read as a peer stat, not a caption). */
+.f2ce-stat-tiles {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
 }
 
-.f2ce-stat-row label {
-  margin-bottom: 0;
+.f2ce-stat-tile {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  background: var(--bg-surface, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border, #33333f);
+  border-radius: 6px;
 }
 
-.f2ce-stat-row input {
-  width: 80px;
-  flex: none;
+.f2ce-stat-tile label {
+  margin-bottom: 0;
+  text-align: center;
+}
+
+.f2ce-stat-tile input {
+  width: 100%;
+  text-align: center;
+  padding: 8px 4px;
+}
+
+/* Intelligence: read-only, derived — same tile size/style as the other
+   three, just visually muted so it reads as non-editable at a glance. */
+.f2ce-stat-tile-readonly input {
+  color: var(--fg-dim, #9a9aa6);
+  background: var(--bg-input-disabled, rgba(255, 255, 255, 0.03));
+  cursor: default;
 }
 
 .f2ce-stat-budget {
-  margin: 4px 0 0 !important;
+  margin: 8px 0 0 !important;
   font-size: 12px !important;
 }
 
@@ -307,4 +355,20 @@
   background: var(--bg-surface, rgba(255, 255, 255, 0.08));
   border: 1px solid var(--border, #33333f);
   border-radius: 6px;
+}
+
+/* Narrow viewports: drop the creation form's paired fields (and stat tiles)
+   to a single column rather than overflowing the card's width. */
+@media (max-width: 620px) {
+  .f2ce-create-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .f2ce-stat-tiles {
+    flex-wrap: wrap;
+  }
+
+  .f2ce-stat-tile {
+    flex: 1 1 40%;
+  }
 }

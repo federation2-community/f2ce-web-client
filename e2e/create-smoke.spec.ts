@@ -35,7 +35,9 @@ async function openCreateForm(page: Page) {
 }
 
 test.describe('Char.Create (one-shot GMCP create)', () => {
-  test('case 1: create form opens from Landing', async ({ page }) => {
+  test('case 1: create form opens from Landing, every field + submit fit on screen (issue #1)', async ({
+    page,
+  }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(String(e)));
 
@@ -45,7 +47,22 @@ test.describe('Char.Create (one-shot GMCP create)', () => {
     await expect(page.locator('#f2ce-create-confirm-password')).toBeVisible();
     await expect(page.locator('#f2ce-create-email')).toBeVisible();
     await expect(page.locator('#f2ce-create-race')).toBeVisible();
-    await expect(page.getByRole('button', { name: /^create character$/i })).toBeVisible();
+    await expect(page.locator('#f2ce-create-strength')).toBeVisible();
+    await expect(page.locator('#f2ce-create-stamina')).toBeVisible();
+    await expect(page.locator('#f2ce-create-dexterity')).toBeVisible();
+    // Intelligence: read-only 4th stat tile, same size/style as the other
+    // three (issue #4) — derived from the 35/35/35 defaults.
+    const intelligence = page.locator('#f2ce-create-intelligence');
+    await expect(intelligence).toBeVisible();
+    await expect(intelligence).toHaveValue('35');
+    await expect(intelligence).toBeDisabled();
+    // The old "140 stat points..." caption under the title is gone (issue #6).
+    await expect(page.getByText(/stat points to distribute — strength, stamina and dexterity/i)).toHaveCount(0);
+
+    const submit = page.getByRole('button', { name: /^create character$/i });
+    await expect(submit).toBeVisible();
+    await expect(submit).toBeInViewport();
+    await expect(submit).toBeEnabled();
 
     expect(errors, `uncaught page errors: ${errors.join('\n')}`).toHaveLength(0);
   });
@@ -125,13 +142,100 @@ test.describe('Char.Create (one-shot GMCP create)', () => {
 
     await expect(page.locator('.f2ce-namecheck-taken')).toBeVisible({ timeout: 10_000 });
 
-    // Client-side validation (nameTaken from the live CheckName) disables
-    // submit before the request would ever reach the server — confirm the
-    // form is blocked and stays up rather than allowing a doomed submit.
+    // The submit button is deliberately NEVER disabled by client-side
+    // validity (that was issue #7's root cause — a disabled button gives no
+    // feedback at all). Clicking it here must run validation, show the
+    // inline error, and NOT open a create session / navigate off the form.
     const submit = page.getByRole('button', { name: /^create character$/i });
-    await expect(submit).toBeDisabled();
+    await expect(submit).toBeEnabled();
+    await submit.click();
     await expect(page.locator('.f2ce-field-error')).toContainText(/already taken/i);
     await expect(page.locator('#f2ce-create-name')).toBeVisible();
+    await expect(page.getByText(/Fed2 Community Edition/i)).toHaveCount(0);
+  });
+
+  test('case 6: blank required fields are blocked with inline messages, not a silent no-op (issues #3/#7)', async ({
+    page,
+  }) => {
+    await openCreateForm(page);
+
+    // Every create field starts blank except the 35/35/35 stat defaults and
+    // the fixed gender choice — click Create immediately.
+    const submit = page.getByRole('button', { name: /^create character$/i });
+    await expect(submit).toBeEnabled();
+    await submit.click();
+
+    await expect(page.getByText(/character name must be 3 to 15 letters/i)).toBeVisible();
+    await expect(page.getByText(/password must be at least 8 characters/i)).toBeVisible();
+    await expect(page.getByText(/race must be 3 to 15 letters or numbers/i)).toBeVisible();
+    // Still on the form, nothing was submitted to the engine.
+    await expect(page.locator('#f2ce-create-name')).toBeVisible();
+    await expect(page.getByText(/Fed2 Community Edition/i)).toHaveCount(0);
+  });
+
+  test('case 7: a too-short password is blocked with the engine-mirrored min-length message (issue #2)', async ({
+    page,
+  }) => {
+    await openCreateForm(page);
+
+    const fresh = uniqueName('Zsh');
+    await page.locator('#f2ce-create-name').fill(fresh);
+    await page.locator('#f2ce-create-password').fill('short');
+    await page.locator('#f2ce-create-confirm-password').fill('short');
+    await page.locator('#f2ce-create-race').fill('human');
+
+    const submit = page.getByRole('button', { name: /^create character$/i });
+    await expect(submit).toBeEnabled();
+    await submit.click();
+
+    await expect(page.getByText(/password must be at least 8 characters/i)).toBeVisible();
+    await expect(page.getByText(/Fed2 Community Edition/i)).toHaveCount(0);
+  });
+
+  test('case 8: an out-of-range stat is blocked with a range message (issue #5)', async ({ page }) => {
+    await openCreateForm(page);
+
+    const fresh = uniqueName('Zst');
+    await page.locator('#f2ce-create-name').fill(fresh);
+    await page.locator('#f2ce-create-password').fill('SuperSecret123');
+    await page.locator('#f2ce-create-confirm-password').fill('SuperSecret123');
+    await page.locator('#f2ce-create-race').fill('human');
+    await page.locator('#f2ce-create-strength').fill('99');
+
+    const submit = page.getByRole('button', { name: /^create character$/i });
+    await expect(submit).toBeEnabled();
+    await submit.click();
+
+    await expect(page.getByText(/strength must be between 20 and 70/i)).toBeVisible();
+    await expect(page.getByText(/Fed2 Community Edition/i)).toHaveCount(0);
+  });
+
+  test('case 9: a malformed email is blocked, but a blank email is accepted (issue #8)', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openCreateForm(page);
+
+    const fresh = uniqueName('Zem');
+    await page.locator('#f2ce-create-name').fill(fresh);
+    await page.locator('#f2ce-create-password').fill('SuperSecret123');
+    await page.locator('#f2ce-create-confirm-password').fill('SuperSecret123');
+    await page.locator('#f2ce-create-race').fill('human');
+    await page.locator('#f2ce-create-email').fill('not-an-email');
+
+    const submit = page.getByRole('button', { name: /^create character$/i });
+    await submit.click();
+    await expect(page.getByText(/enter a valid email address/i)).toBeVisible();
+    await expect(page.getByText(/Fed2 Community Edition/i)).toHaveCount(0);
+
+    // Clear the email (now optional) and submit for real — the engine only
+    // accepts the literal "skip" as no-email (Login::ValidateAndCreateAccount),
+    // so this also proves submitCreate's blank->"skip" translation works
+    // end-to-end, not just against a mocked session.
+    await page.locator('#f2ce-create-email').fill('');
+    await expect(page.locator('.f2ce-namecheck-available')).toBeVisible({ timeout: 10_000 });
+    await submit.click();
+
+    await expect(page.getByText(/Fed2 Community Edition/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/You can see .*exit/i).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('case 5: regression — existing login still works, forgot still shows Landing confirmation', async ({

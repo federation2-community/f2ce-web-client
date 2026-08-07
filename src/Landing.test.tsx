@@ -132,7 +132,7 @@ describe('Landing', () => {
       fireEvent.change(screen.getByLabelText(/^character name$/i), { target: { value: 'Zaphod' } });
       fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'longenough1' } });
       fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'longenough1' } });
-      fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'zaphod@example.com' } });
+      fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: 'zaphod@example.com' } });
       fireEvent.change(screen.getByLabelText(/^race$/i), { target: { value: 'human' } });
     };
 
@@ -141,25 +141,84 @@ describe('Landing', () => {
       fireEvent.click(screen.getByRole('button', { name: /create a new character/i }));
     };
 
-    it('gates the submit button behind client-side validation', () => {
+    // Regression coverage for issue #7 ("Create character does nothing"):
+    // the submit button used to be disabled by client-side validity, which
+    // meant an invalid click fired no onSubmit at all — no error, no request,
+    // no feedback. It must now always be clickable (live-browser
+    // verification of this exact scenario is in e2e/create-smoke.spec.ts).
+    it('never disables the submit button on validity — an invalid submit shows inline errors instead of doing nothing', () => {
       const p = props();
       openCreateForm(p);
 
       const submit = screen.getByRole('button', { name: /^create character$/i }) as HTMLButtonElement;
-      expect(submit.disabled).toBe(true);
-
-      fillValidCreateForm();
       expect(submit.disabled).toBe(false);
 
-      // An out-of-budget stamina (given strength 35, max is 65) re-disables submit.
-      fireEvent.change(screen.getByLabelText(/^stamina$/i), { target: { value: '999' } });
-      expect(submit.disabled).toBe(true);
+      // Blank form: clicking must show errors, not silently no-op.
+      fireEvent.click(submit);
+      expect(screen.getByText(/character name must be 3 to 15 letters/i)).toBeTruthy();
+      expect(screen.getByText(/password must be at least 8 characters/i)).toBeTruthy();
+      expect(mockSessions).toHaveLength(0);
+      expect(submit.disabled).toBe(false);
 
-      // Attempting to submit (e.g. pressing Enter) while invalid surfaces the
-      // client-side error inline rather than opening a headless session.
-      fireEvent.submit(submit.closest('form')!);
+      fillValidCreateForm();
+      // An out-of-budget stamina (given strength 35, max is 65) is still
+      // blocked on submit, but the button stays clickable and reachable.
+      fireEvent.change(screen.getByLabelText(/^stamina$/i), { target: { value: '999' } });
+      expect(submit.disabled).toBe(false);
+      fireEvent.click(submit);
       expect(screen.getByText(/stamina must be between/i)).toBeTruthy();
       expect(mockSessions).toHaveLength(0);
+    });
+
+    it('email is optional: a blank email passes validation and is sent as "skip" (the engine no-email sentinel)', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm();
+      fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: '' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+
+      expect(screen.queryByText(/enter a valid email/i)).toBeNull();
+      expect(mockSessions).toHaveLength(1);
+      act(() => {
+        mockSessions[0].events.emit('gmcp.negotiated');
+      });
+      const sent = JSON.parse(
+        (mockSessions[0].sendGmcpRaw as ReturnType<typeof vi.fn>).mock.calls[0][0].replace('Char.Create ', ''),
+      );
+      expect(sent.email).toBe('skip');
+    });
+
+    it('rejects a malformed (non-blank) email', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm();
+      fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: 'not-an-email' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+
+      expect(screen.getByText(/enter a valid email/i)).toBeTruthy();
+      expect(mockSessions).toHaveLength(0);
+    });
+
+    it('shows intelligence as a read-only, derived 4th stat tile', () => {
+      const p = props();
+      openCreateForm(p);
+
+      const intelligence = screen.getByLabelText(/^intelligence$/i) as HTMLInputElement;
+      expect(intelligence.readOnly).toBe(true);
+      expect(intelligence.disabled).toBe(true);
+      // Default strength/stamina/dexterity are 35/35/35 -> derived = 140-105 = 35.
+      expect(intelligence.value).toBe('35');
+
+      fireEvent.change(screen.getByLabelText(/^strength$/i), { target: { value: '50' } });
+      expect(intelligence.value).toBe('20');
+    });
+
+    it('does not show the removed explanatory stat-points paragraph under the title', () => {
+      const p = props();
+      openCreateForm(p);
+      expect(screen.queryByText(/stat points to distribute — strength, stamina and dexterity/i)).toBeNull();
     });
 
     it('sends the Char.Create GMCP payload on submit', () => {
