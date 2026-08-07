@@ -23,6 +23,9 @@ Set in `.env` (see `.env.example`). These bake into the static build:
   Test: `wss://ws-test.federation2.com/`. Prod: `wss://ws.federation2.com/`.
 - `VITE_PKG_URL` / `VITE_PKG_VERSION` — the `f2ce-tools` release the client
   preinstalls, fetched through the proxy's `/?url=` forwarder.
+- `VITE_GA_ID` — GA4 measurement id (`G-…`). **Prod only:** set it on the prod
+  CodeBuild project so Google Analytics fires on `client.federation2.com`;
+  leave it unset on the test project and locally, where the loader no-ops.
 
 ## Redeploy (manual)
 
@@ -61,7 +64,7 @@ To wire it (one-time, AWS side):
    `client.federation2.com` bucket, and `cloudfront:CreateInvalidation` on
    distribution `E3AT4FJ48938JC`.
 3. Set project env vars for the target environment (`VITE_WS_URL`,
-   `VITE_PKG_URL`, `VITE_PKG_VERSION`, `S3_BUCKET`, `CF_DIST_ID`) — the
-   `buildspec.yml` carries test defaults; override for prod.
+   `VITE_PKG_URL`, `VITE_PKG_VERSION`, `S3_BUCKET`, `CF_DIST_ID`, and on prod
+   `VITE_GA_ID`) — the `buildspec.yml` carries test defaults; override for prod.
 
 Until the CodeBuild project exists, deploy manually with `scripts/deploy.sh`.

@@ -7,6 +7,11 @@ export interface AppEnv {
   // toolbar buttons (scripts, files, settings, …) and the bundled `run-lua-code`
   // package. Unset on prod, so prod stays minimal. Optional — defaults false.
   showDevToolbar: boolean;
+  // GA4 measurement id (e.g. G-XXXXXXXXXX). Set ONLY on the prod CodeBuild
+  // project, so analytics fire on client.federation2.com but never on
+  // client-test or in local/dev builds. Empty string when unset -> no analytics
+  // (see initAnalytics in src/analytics.ts).
+  gaId: string;
 }
 
 export const readEnv = (): AppEnv => ({
@@ -14,4 +19,5 @@ export const readEnv = (): AppEnv => ({
   VITE_PKG_URL: import.meta.env.VITE_PKG_URL,
   VITE_PKG_VERSION: import.meta.env.VITE_PKG_VERSION,
   showDevToolbar: import.meta.env.VITE_SHOW_TOOLBAR === 'true',
+  gaId: import.meta.env.VITE_GA_ID ?? '',
 });

@@ -6,6 +6,12 @@ import './landing.css';
 
 import { buildBrand } from './brand';
 import { readEnv } from './env';
+import { initAnalytics } from './analytics';
+
+const env = readEnv();
+
+// GA4 — no-ops unless VITE_GA_ID is set (prod build only); see analytics.ts.
+initAnalytics(env.gaId);
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
@@ -14,6 +20,6 @@ if (!rootEl) {
 
 createRoot(rootEl).render(
   <StrictMode>
-    <MudletWebApp brand={buildBrand(readEnv())} />
+    <MudletWebApp brand={buildBrand(env)} />
   </StrictMode>,
 );
