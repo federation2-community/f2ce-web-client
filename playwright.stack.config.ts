@@ -12,7 +12,7 @@ import { defineConfig, devices } from '@playwright/test';
 // vite port (it prints the actual URL to use).
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'stack-smoke.spec.ts',
+  testMatch: ['stack-smoke.spec.ts', 'create-smoke.spec.ts'],
   timeout: 60_000,
   use: {
     baseURL: process.env.STACK_URL ?? 'http://localhost:5173',
