@@ -205,6 +205,95 @@
   color: var(--fg, #e6e6ea);
 }
 
+/* Char.Create form (see Landing.tsx's headless MudSession create flow). */
+.f2ce-landing .f2ce-landing-create p {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-dim, #9a9aa6);
+}
+
+.f2ce-landing .f2ce-landing-create fieldset {
+  margin: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border, #33333f);
+  border-radius: 6px;
+}
+
+.f2ce-landing .f2ce-landing-create legend {
+  padding: 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim, #9a9aa6);
+}
+
+.f2ce-gender {
+  display: flex;
+  gap: 14px;
+}
+
+.f2ce-gender-option {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  margin: 0 !important;
+  text-transform: none !important;
+  font-size: 13px !important;
+  color: var(--fg, #e6e6ea) !important;
+}
+
+.f2ce-gender-option input {
+  width: auto;
+}
+
+.f2ce-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.f2ce-stat-row label {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.f2ce-stat-row input {
+  width: 80px;
+  flex: none;
+}
+
+.f2ce-stat-budget {
+  margin: 4px 0 0 !important;
+  font-size: 12px !important;
+}
+
+.f2ce-field-error {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--error, #ff6b6b);
+}
+
+.f2ce-namecheck {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.f2ce-namecheck-available {
+  color: var(--accent, #2fbe78);
+}
+
+.f2ce-namecheck-taken,
+.f2ce-namecheck-invalid {
+  color: var(--error, #ff6b6b);
+}
+
+.f2ce-namecheck-checking {
+  color: var(--fg-dim, #9a9aa6);
+}
+
 /* Landing-local confirmation for the forgot-password / forgot-username forms
    (see Landing.tsx's headless MudSession flow). Deliberately neutral, not
    red/error-styled — this covers both the engine's friendly "we've emailed

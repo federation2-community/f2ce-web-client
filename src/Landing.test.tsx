@@ -31,6 +31,7 @@ const { mockSessions, MockMudSession } = vi.hoisted(() => {
     disconnect = vi.fn();
     destroy = vi.fn();
     sendCharLoginCredentials = vi.fn();
+    sendGmcpRaw = vi.fn();
   }
 
   const mockSessions: MockMudSession[] = [];
@@ -112,16 +113,177 @@ describe('Landing', () => {
     expect(localStorage.getItem('f2ce:lastCharacter')).toBe('Ford');
   });
 
-  it('new-character auto-answers the Login: prompt with `new` and no password', () => {
+  it('clicking "Create a new character" opens the creation form without connecting', () => {
     const p = props();
     render(<Landing {...p} />);
 
     fireEvent.click(screen.getByRole('button', { name: /create a new character/i }));
 
-    expect(p.ensureBrandProfile).toHaveBeenCalledWith();
-    expect(p.openProfile).toHaveBeenCalledWith('conn-1', true);
-    expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', { account: 'new', password: '' });
+    expect(screen.getByRole('heading', { name: /create a new character/i })).toBeTruthy();
+    expect(p.ensureBrandProfile).not.toHaveBeenCalled();
+    expect(p.openProfile).not.toHaveBeenCalled();
     expect(mockSessions).toHaveLength(0);
+  });
+
+  describe('Char.Create form', () => {
+    // Fill every field with values that pass client-side validation (default
+    // stats 35/35/35 are already a valid equal split of the 140-point budget).
+    const fillValidCreateForm = () => {
+      fireEvent.change(screen.getByLabelText(/^character name$/i), { target: { value: 'Zaphod' } });
+      fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'longenough1' } });
+      fireEvent.change(screen.getByLabelText(/confirm password/i), { target: { value: 'longenough1' } });
+      fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'zaphod@example.com' } });
+      fireEvent.change(screen.getByLabelText(/^race$/i), { target: { value: 'human' } });
+    };
+
+    const openCreateForm = (p: LandingProps) => {
+      render(<Landing {...p} />);
+      fireEvent.click(screen.getByRole('button', { name: /create a new character/i }));
+    };
+
+    it('gates the submit button behind client-side validation', () => {
+      const p = props();
+      openCreateForm(p);
+
+      const submit = screen.getByRole('button', { name: /^create character$/i }) as HTMLButtonElement;
+      expect(submit.disabled).toBe(true);
+
+      fillValidCreateForm();
+      expect(submit.disabled).toBe(false);
+
+      // An out-of-budget stamina (given strength 35, max is 65) re-disables submit.
+      fireEvent.change(screen.getByLabelText(/^stamina$/i), { target: { value: '999' } });
+      expect(submit.disabled).toBe(true);
+
+      // Attempting to submit (e.g. pressing Enter) while invalid surfaces the
+      // client-side error inline rather than opening a headless session.
+      fireEvent.submit(submit.closest('form')!);
+      expect(screen.getByText(/stamina must be between/i)).toBeTruthy();
+      expect(mockSessions).toHaveLength(0);
+    });
+
+    it('sends the Char.Create GMCP payload on submit', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm();
+
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+
+      expect(mockSessions).toHaveLength(1);
+      const session = mockSessions[0];
+      expect(session.connect).toHaveBeenCalledWith('wss://ws-test.federation2.com/');
+
+      act(() => {
+        session.events.emit('gmcp.negotiated');
+      });
+      expect(session.sendGmcpRaw).toHaveBeenCalledWith(
+        'Char.Create ' +
+          JSON.stringify({
+            account: 'Zaphod',
+            password: 'longenough1',
+            email: 'zaphod@example.com',
+            race: 'human',
+            gender: 'female',
+            strength: '35',
+            stamina: '35',
+            dexterity: '35',
+          }),
+      );
+    });
+
+    it('on success:true, disconnects the headless session and hands off to the login helper', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm();
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+
+      const session = mockSessions[0];
+      act(() => {
+        session.events.emit('gmcp.negotiated');
+        session.events.emit('gmcp', { path: 'Char.Create.Result', value: { success: true } });
+      });
+
+      expect(session.disconnect).toHaveBeenCalled();
+      expect(session.destroy).toHaveBeenCalled();
+      expect(p.ensureBrandProfile).toHaveBeenCalledWith('Zaphod');
+      expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', {
+        account: 'Zaphod',
+        password: 'longenough1',
+      });
+      expect(p.openProfile).toHaveBeenCalledWith('conn-1', true);
+      expect(localStorage.getItem('f2ce:lastCharacter')).toBe('Zaphod');
+    });
+
+    it('on success:false, shows the field error and stays on the form', () => {
+      const p = props();
+      openCreateForm(p);
+      fillValidCreateForm();
+      fireEvent.click(screen.getByRole('button', { name: /^create character$/i }));
+
+      const session = mockSessions[0];
+      act(() => {
+        session.events.emit('gmcp.negotiated');
+        session.events.emit('gmcp', {
+          path: 'Char.Create.Result',
+          value: { success: false, field: 'name', message: 'That character name was just taken.' },
+        });
+      });
+
+      expect(session.disconnect).toHaveBeenCalled();
+      expect(p.openProfile).not.toHaveBeenCalled();
+      expect(p.ensureBrandProfile).not.toHaveBeenCalled();
+      expect(screen.getByText('That character name was just taken.')).toBeTruthy();
+      // Still on the create form.
+      expect(screen.getByRole('heading', { name: /create a new character/i })).toBeTruthy();
+    });
+
+    it('runs a live CheckName on blur and shows availability, ignoring stale replies', () => {
+      const p = props();
+      openCreateForm(p);
+
+      const nameField = screen.getByLabelText(/^character name$/i);
+      fireEvent.change(nameField, { target: { value: 'Trillian' } });
+      fireEvent.blur(nameField);
+
+      expect(mockSessions).toHaveLength(1);
+      const firstCheck = mockSessions[0];
+      act(() => {
+        firstCheck.events.emit('gmcp.negotiated');
+      });
+      expect(firstCheck.sendGmcpRaw).toHaveBeenCalledWith(
+        'Char.Create.CheckName ' + JSON.stringify({ name: 'Trillian' }),
+      );
+
+      // Before the first reply arrives, the player changes the name and blurs again.
+      fireEvent.change(nameField, { target: { value: 'Marvin' } });
+      fireEvent.blur(nameField);
+      expect(mockSessions).toHaveLength(2);
+      const secondCheck = mockSessions[1];
+      act(() => {
+        secondCheck.events.emit('gmcp.negotiated');
+      });
+      expect(secondCheck.sendGmcpRaw).toHaveBeenCalledWith(
+        'Char.Create.CheckName ' + JSON.stringify({ name: 'Marvin' }),
+      );
+
+      // The stale first reply (for "Trillian") is discarded — no availability shown for it.
+      act(() => {
+        firstCheck.events.emit('gmcp', {
+          path: 'Char.Create.CheckName.Result',
+          value: { name: 'Trillian', available: false, reason: 'taken' },
+        });
+      });
+      expect(screen.queryByText(/that name is already taken/i)).toBeNull();
+
+      // The current reply (for "Marvin") is applied.
+      act(() => {
+        secondCheck.events.emit('gmcp', {
+          path: 'Char.Create.CheckName.Result',
+          value: { name: 'Marvin', available: true, reason: 'ok' },
+        });
+      });
+      expect(screen.getByText(/available/i)).toBeTruthy();
+    });
   });
 
   it('forgot password drives a headless MudSession with the right credentials and shows the confirmation, not an error modal', async () => {
