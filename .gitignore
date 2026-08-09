@@ -4,3 +4,7 @@ dist
 playwright-report
 test-results
 *.log
+.dev-stack-logs
+# Copied in by dev-stack.sh's LOCAL_PKG mode — a build artifact of whatever
+# fed2-tools working tree you happened to be testing, never ours to commit.
+public/f2ce-tools-local.mpackage

@@ -370,6 +370,80 @@
   border-radius: 6px;
 }
 
+/* Opt-in "save my password" tick, under the password field. Laid out as a row
+   so the box and its wording share one click target (it is a <label>).
+
+   Selector is `.f2ce-landing .f2ce-remember`, not `.f2ce-remember`: the base
+   `.f2ce-landing label` rule above is (0,1,1) and would otherwise win, forcing
+   `display: block` — which kills the flex row and its gap — and shouting the
+   text in uppercase like a field label. Every property that rule sets and this
+   one cares about is therefore restated here rather than assumed. */
+.f2ce-landing .f2ce-remember {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: -2px 0 0;
+  font-size: 13.5px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg-muted, #b9b9c4);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Also outranks `.f2ce-landing input { width: 100% }`, which would otherwise
+   stretch the box across the card. */
+.f2ce-landing .f2ce-remember input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  padding: 0;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent, #2fbe78);
+  cursor: pointer;
+}
+
+/* Shown only while the box is ticked: the tradeoff is worth stating plainly at
+   the moment it is being accepted, not buried in a help page. */
+.f2ce-landing .f2ce-remember-hint {
+  margin: -6px 0 0 24px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-muted, #b9b9c4);
+}
+
+/* "The game is down" banner, above the cards (see Landing.tsx's gameStatus).
+   Deliberately amber-informational rather than red-error: a restart window is
+   a routine wait, not a failure, and the player has nothing to fix. Sized to
+   match the login card so it reads as part of the same panel. */
+.f2ce-game-status {
+  margin: 0;
+  max-width: 520px;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.55;
+  text-align: center;
+  color: var(--fg, #e6e6ea);
+  background: rgba(240, 173, 78, 0.14);
+  border: 1px solid rgba(240, 173, 78, 0.55);
+  border-radius: 8px;
+}
+
+/* Same message inside the creation form, where the banner may be scrolled out
+   of view by the time a submit fails. */
+.f2ce-create-notice {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg, #e6e6ea);
+  background: rgba(240, 173, 78, 0.14);
+  border: 1px solid rgba(240, 173, 78, 0.55);
+  border-radius: 6px;
+}
+
 /* No-email confirmation dialog (see Landing.tsx's noEmailPrompt). Overlays the
    whole landing so it reads as a modal decision, not an inline note. */
 .f2ce-modal-overlay {
