@@ -27,8 +27,11 @@
 #                        working tree, installed INSTEAD of the published
 #                        release (see "Testing local f2ce-tools" below)
 #
-# Testing local f2ce-tools:
-#   (cd ../fed2-tools && docker run --rm -v "$PWD:/work" -w /work demonnic/muddler)
+# Testing local f2ce-tools (build with muddlet — it injects the Muxlet
+# dependency URL/version that a bare muddler build omits; without that the
+# package installs but cannot boot. muddlet needs `muddle` on PATH — see
+# fed2-tools/scripts/muddle for a Docker shim):
+#   (cd ../fed2-tools && muddlet)
 #   LOCAL_PKG=../fed2-tools/build/f2ce-tools.mpackage scripts/dev-stack.sh
 # Without this the client installs the last GitHub RELEASE, so uncommitted Lua
 # changes are invisible and it is easy to conclude a fix "didn't work" when it
@@ -248,7 +251,7 @@ if [ -n "${LOCAL_PKG:-}" ]; then
   # origin) and no allowlist to fight (the proxy forwarder only fetches GitHub).
   if [ ! -f "$LOCAL_PKG" ]; then
     echo "dev-stack: LOCAL_PKG '$LOCAL_PKG' does not exist — build it first:" >&2
-    echo "           (cd ../fed2-tools && docker run --rm -v \"\$PWD:/work\" -w /work demonnic/muddler)" >&2
+    echo "           (cd ../fed2-tools && muddlet)   # needs muddle on PATH; see fed2-tools/scripts/muddle" >&2
     exit 1
   fi
   LOCAL_PKG_ABS="$(cd "$(dirname "$LOCAL_PKG")" && pwd)/$(basename "$LOCAL_PKG")"
