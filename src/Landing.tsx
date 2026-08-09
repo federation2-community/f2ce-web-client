@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MudSession, setSessionCredentials, type LandingProps } from '@mudlet/mudlet-web';
 import { readEnv } from './env';
+import {
+  probeGame,
+  stateFromClose,
+  statusMessage,
+  REPROBE_INTERVAL_MS,
+  type GameStatus,
+} from './gameStatus';
 
 const LAST_CHARACTER_KEY = 'f2ce:lastCharacter';
 
@@ -23,6 +30,52 @@ function readLastCharacter(): string {
     return localStorage.getItem(LAST_CHARACTER_KEY) ?? '';
   } catch {
     return '';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// "Save my password" (opt-in).
+//
+// ⚠ SECURITY: this writes the password to localStorage in PLAINTEXT. The app
+// store is not encrypted, and anything executing on this origin can read it.
+// That is exactly why it is off by default, requires an explicit tick, says so
+// on screen, and is erased the moment the box is unticked rather than at some
+// later login. mudlet-web takes the same position for its own
+// `charLoginPassword` field (storage/schema.d.ts): persist only on an explicit
+// choice. Note that `setSessionCredentials` — the normal path — is deliberately
+// in-memory only, so this is genuinely a separate, opted-into store.
+//
+// The character name is saved alongside the password because Fed2 players
+// commonly have several characters: a password prefilled for the wrong one is
+// worse than no prefill, so it is only restored when the names match.
+// ---------------------------------------------------------------------------
+
+const SAVED_LOGIN_KEY = 'f2ce:savedLogin';
+
+interface SavedLogin {
+  character: string;
+  password: string;
+}
+
+function readSavedLogin(): SavedLogin | null {
+  try {
+    const raw = localStorage.getItem(SAVED_LOGIN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedLogin>;
+    if (typeof parsed.character !== 'string' || typeof parsed.password !== 'string') return null;
+    return { character: parsed.character, password: parsed.password };
+  } catch {
+    // Absent, corrupt, or storage disabled — all mean "no saved password".
+    return null;
+  }
+}
+
+function writeSavedLogin(login: SavedLogin | null): void {
+  try {
+    if (login) localStorage.setItem(SAVED_LOGIN_KEY, JSON.stringify(login));
+    else localStorage.removeItem(SAVED_LOGIN_KEY);
+  } catch {
+    /* storage disabled (e.g. private mode) — the convenience just won't persist */
   }
 }
 
@@ -205,7 +258,12 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
   type Mode = 'login' | 'forgotPassword' | 'forgotName' | 'create';
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState(readLastCharacter);
-  const [password, setPassword] = useState('');
+  // Only restore the password when it belongs to the name we just prefilled.
+  const [password, setPassword] = useState(() => {
+    const saved = readSavedLogin();
+    return saved && saved.character === readLastCharacter() ? saved.password : '';
+  });
+  const [savePassword, setSavePassword] = useState(() => readSavedLogin() !== null);
   const [email, setEmail] = useState('');
 
   // Forgot-form UI state, shared across the two forgot modes (only one is
@@ -232,20 +290,72 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
   // validation messages start showing (so the form isn't red before they've
   // typed anything).
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  // Form-level Char.Create failure (the game is down / unreachable), as opposed
+  // to the per-field `serverErrors` the engine returns for a bad value.
+  const [createNotice, setCreateNotice] = useState<string | null>(null);
   // Set when an otherwise-valid submit has a blank email: we warn about the
   // account-recovery/support tradeoff before actually creating the character.
   const [noEmailPromptOpen, setNoEmailPromptOpen] = useState(false);
   const [nameCheck, setNameCheck] = useState<NameCheckState | null>(null);
+
+  // Whether the game is accepting players. Probed on mount and re-probed while
+  // it is down, so the notice clears itself when a restart finishes. `null`
+  // means the first probe hasn't answered yet — we say nothing rather than
+  // flashing a scary banner during the second it takes to find out.
+  const [gameStatus, setGameStatus] = useState<GameStatus | null>(null);
+  const [loginChecking, setLoginChecking] = useState(false);
+
   const createNameRef = useRef(createName);
   createNameRef.current = createName;
   const emailInputRef = useRef<HTMLInputElement>(null);
   const nameCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Switching characters must not leave the previous one's password sitting in
+  // the field. Only the untouched prefill is cleared — if what's there differs
+  // from the stored secret the player typed it, and it is not ours to discard.
+  const changeName = (next: string) => {
+    setName(next);
+    const saved = readSavedLogin();
+    if (!saved) return;
+    if (next.trim() === saved.character) setPassword(saved.password);
+    else if (password === saved.password) setPassword('');
+  };
+
+  const toggleSavePassword = (checked: boolean) => {
+    setSavePassword(checked);
+    // Unticking erases now rather than at the next login: someone who changes
+    // their mind and closes the tab must not leave a password behind.
+    if (!checked) writeSavedLogin(null);
+  };
 
   const switchMode = (next: Mode) => {
     setMode(next);
     setForgotSending(false);
     setForgotNotice(null);
   };
+
+  // Probe on mount, then keep re-probing only while the game is down, so the
+  // notice clears itself when a restart finishes rather than making the player
+  // guess when to reload. Depending on the whole `gameStatus` object (not just
+  // its state) is what chains the polls: each result is a new object, which
+  // re-runs this and schedules the next probe — until one comes back 'up', when
+  // it bails out and the polling stops.
+  useEffect(() => {
+    if (gameStatus?.state === 'up') return undefined;
+    let cancelled = false;
+    const timer = setTimeout(
+      () => {
+        void probeGame(readEnv().VITE_WS_URL).then((result) => {
+          if (!cancelled) setGameStatus(result);
+        });
+      },
+      gameStatus === null ? 0 : REPROBE_INTERVAL_MS,
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [gameStatus]);
 
   // Stage GMCP Char.Login credentials on a fresh brand profile and connect.
   const connect = (account: string, secret: string, character?: string) => {
@@ -307,11 +417,23 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
     const finish = () => {
       if (settled) return;
       settled = true;
+      clearTimeout(timeoutId);
       offNegotiated();
       offResult();
+      offClose();
       session.disconnect();
       session.destroy();
     };
+
+    // Without these the check has no exit when the game is down: no reply ever
+    // arrives, nothing settles, and the field sits on "Checking…" forever.
+    const giveUp = () => {
+      if (settled) return;
+      finish();
+      if (candidate === createNameRef.current) setNameCheck(null);
+    };
+    const timeoutId = setTimeout(giveUp, CREATE_TIMEOUT_MS);
+    const offClose = session.events.on('close', giveUp);
 
     const offNegotiated = session.events.on('gmcp.negotiated', () => {
       session.sendGmcpRaw('Char.Create.CheckName ' + JSON.stringify({ name: candidate }));
@@ -382,6 +504,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
   // on the form.
   const submitCreate = (fields: CreateFields) => {
     setCreateSubmitting(true);
+    setCreateNotice(null);
 
     const session = new MudSession();
     let settled = false;
@@ -392,15 +515,29 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
       clearTimeout(timeoutId);
       offNegotiated();
       offResult();
+      offClose();
       setCreateSubmitting(false);
       after();
       session.disconnect();
       session.destroy();
     };
 
-    const timeoutId = setTimeout(() => {
-      finish(() => setServerErrors((prev) => ({ ...prev, name: CREATE_TIMEOUT_MESSAGE })));
-    }, CREATE_TIMEOUT_MS);
+    // A connection-level failure is not the player's fault and has nothing to do
+    // with the name field, which is where every non-success used to land. Report
+    // it as a form-level notice, and update the shared banner while we're at it
+    // — we just learned something about the game's state first-hand.
+    const failWith = (state: ReturnType<typeof stateFromClose>) =>
+      finish(() => {
+        setGameStatus({ state, message: statusMessage(state) });
+        setCreateNotice(statusMessage(state));
+      });
+
+    const timeoutId = setTimeout(() => failWith('unknown'), CREATE_TIMEOUT_MS);
+
+    // Fires on our own disconnect too, but `finish` has already settled by then.
+    const offClose = session.events.on('close', (event) =>
+      failWith(stateFromClose(event?.code ?? 1006, event?.reason ?? '')),
+    );
 
     const offNegotiated = session.events.on('gmcp.negotiated', () => {
       session.sendGmcpRaw(
@@ -446,18 +583,33 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
     try {
       session.connect(readEnv().VITE_WS_URL);
     } catch {
-      finish(() => setServerErrors((prev) => ({ ...prev, name: CREATE_TIMEOUT_MESSAGE })));
+      failWith('unreachable');
     }
   };
 
-  const login = (event: FormEvent<HTMLFormElement>) => {
+  // Confirm the game is actually up before handing off. `connect` runs
+  // `openProfile`, which puts the player in the terminal — and a game that is
+  // down looks, from in there, like a raw disconnect/reconnect prompt rather
+  // than "the nightly restart hasn't finished." Checking first costs one
+  // short-lived socket and keeps them on a form that can explain itself.
+  const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const character = name.trim();
+
+    setLoginChecking(true);
+    const result = await probeGame(readEnv().VITE_WS_URL);
+    setLoginChecking(false);
+    setGameStatus(result);
+    if (result.state !== 'up') return;
+
     try {
       localStorage.setItem(LAST_CHARACTER_KEY, character);
     } catch {
       /* storage disabled (e.g. private mode) — the prefill just won't persist */
     }
+    // Only ever persisted for a login that actually went through, so a typo'd
+    // password isn't the one we remember.
+    writeSavedLogin(savePassword ? { character, password } : null);
     connect(character, password, character);
   };
 
@@ -562,6 +714,12 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
         alt="Federation 2 — Community Edition"
       />
 
+      {gameStatus && gameStatus.state !== 'up' && (
+        <p className="f2ce-game-status" role="status">
+          {gameStatus.message}
+        </p>
+      )}
+
       <div className="f2ce-cards">
         {mode !== 'create' && (
           <section className="f2ce-landing-new">
@@ -582,7 +740,7 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                 id="f2ce-landing-name"
                 type="text"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => changeName(event.target.value)}
                 autoComplete="username"
               />
             </div>
@@ -596,7 +754,26 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
                 autoComplete="current-password"
               />
             </div>
-            <button type="submit">Log in</button>
+            <label className="f2ce-remember">
+              <input
+                type="checkbox"
+                checked={savePassword}
+                onChange={(event) => toggleSavePassword(event.target.checked)}
+              />
+              <span>Save my password on this device</span>
+            </label>
+            {savePassword && (
+              <p className="f2ce-remember-hint">
+                Stored unencrypted in this browser — don't use this on a shared or public
+                computer.
+              </p>
+            )}
+            {/* Never disabled on game state — the player can always retry, and
+                the probe is what tells them where they stand. Only the in-flight
+                check disables it, to stop a second socket piling on the first. */}
+            <button type="submit" disabled={loginChecking}>
+              {loginChecking ? 'Checking…' : 'Log in'}
+            </button>
             <div className="f2ce-forgot-links">
               <button type="button" className="f2ce-linkbtn" onClick={() => switchMode('forgotPassword')}>
                 Forgot password?
@@ -696,6 +873,12 @@ export function Landing({ openProfile, ensureBrandProfile }: LandingProps) {
           // was clipped — issue #1).
           <form className="f2ce-landing-create" onSubmit={submitCreateForm} noValidate>
             <h2>Create a new character</h2>
+
+            {createNotice && (
+              <p className="f2ce-create-notice" role="status">
+                {createNotice}
+              </p>
+            )}
 
             {/* Two fields per row (name/race, password/confirm, email/gender) —
                 the wider two-column card (see .f2ce-landing-create in

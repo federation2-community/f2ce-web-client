@@ -23,8 +23,31 @@
 #                        through the local proxy's CORS forwarder
 #                        (default: the 3.2.4 f2ce-tools release)
 #   PKG_VERSION         version string reported to mudlet-web  (default: 3.2.4)
+#   LOCAL_PKG           path to a .mpackage built from your own fed2-tools
+#                        working tree, installed INSTEAD of the published
+#                        release (see "Testing local f2ce-tools" below)
+#
+# Testing local f2ce-tools:
+#   (cd ../fed2-tools && docker run --rm -v "$PWD:/work" -w /work demonnic/muddler)
+#   LOCAL_PKG=../fed2-tools/build/f2ce-tools.mpackage scripts/dev-stack.sh
+# Without this the client installs the last GitHub RELEASE, so uncommitted Lua
+# changes are invisible and it is easy to conclude a fix "didn't work" when it
+# was simply never loaded. The file is copied into public/ and served by vite at
+# its own origin — deliberately not through the proxy's /?url= forwarder, whose
+# fetch allowlist is GitHub-only.
 #   SKIP_ENGINE_BUILD    set to 1 to skip the cmake build step entirely
 #   ENGINE_WAIT_SECS     how long to poll for the engine port  (default: 90)
+#   ENGINE_MAY_RESTART   set to 1 to let fed2d come and go underneath a running
+#                        proxy + client (see "Testing a down game" below)
+#
+# Testing a down game:
+#   ENGINE_MAY_RESTART=1 scripts/dev-stack.sh
+# Normally the watchdog tears the whole stack down the moment fed2d exits, which
+# makes it impossible to see how the browser client behaves while the game is
+# away. With ENGINE_MAY_RESTART=1 the proxy and vite stay up, so you can
+#   kill $(cat ../fed2-community/fed2d.pid)        # game down
+#   (cd ../fed2-community && ./fed2d)              # game back up
+# and watch the client's own handling (src/gameStatus.ts) react in real time.
 #
 # Ctrl-C (or any exit) tears down all three processes and removes the
 # engine's fed2d.pid run-lock so a future run isn't blocked by a stale lock.
@@ -61,6 +84,7 @@ ENGINE_PORT="${ENGINE_PORT:-30003}"
 PROXY_PORT="${PROXY_PORT:-3001}"
 VITE_PORT="${VITE_PORT:-5173}"
 ENGINE_WAIT_SECS="${ENGINE_WAIT_SECS:-90}"
+ENGINE_MAY_RESTART="${ENGINE_MAY_RESTART:-0}"
 PKG_VERSION="${PKG_VERSION:-3.2.4}"
 PKG_RELEASE_URL="${PKG_URL:-https://github.com/federation2-community/f2ce-tools/releases/download/${PKG_VERSION}/f2ce-tools.mpackage}"
 
@@ -102,6 +126,15 @@ cleanup() {
     fi
   done
 
+  # An engine relaunched by hand (ENGINE_MAY_RESTART) is not $ENGINE_PID, so
+  # take the run-lock's word for who is actually listening before removing it.
+  if [ -f "$ENGINE_DIR/fed2d.pid" ]; then
+    relaunched="$(cat "$ENGINE_DIR/fed2d.pid" 2>/dev/null || true)"
+    if [ -n "$relaunched" ] && [ "$relaunched" != "$ENGINE_PID" ] && kill -0 "$relaunched" 2>/dev/null; then
+      log "stopping relaunched engine (pid $relaunched)"
+      kill "$relaunched" 2>/dev/null || true
+    fi
+  fi
   rm -f "$ENGINE_DIR/fed2d.pid"
   log "torn down."
 }
@@ -208,12 +241,31 @@ if [ ! -d "$CLIENT_DIR/node_modules" ]; then
   (cd "$CLIENT_DIR" && npm ci >>"$CLIENT_LOG" 2>&1)
 fi
 
-# Package URL routed THROUGH the local proxy's /?url= CORS forwarder (same
-# path prod uses), so the browser fetches same-origin and avoids a CORS
-# failure fetching the .mpackage straight from GitHub.
-ENCODED_PKG_URL="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$PKG_RELEASE_URL")"
-VITE_PKG_URL="http://localhost:${PROXY_PORT}/?url=${ENCODED_PKG_URL}"
 VITE_WS_URL="ws://localhost:${PROXY_PORT}"
+
+if [ -n "${LOCAL_PKG:-}" ]; then
+  # Serve the operator's own build from vite's origin. No CORS to satisfy (same
+  # origin) and no allowlist to fight (the proxy forwarder only fetches GitHub).
+  if [ ! -f "$LOCAL_PKG" ]; then
+    echo "dev-stack: LOCAL_PKG '$LOCAL_PKG' does not exist — build it first:" >&2
+    echo "           (cd ../fed2-tools && docker run --rm -v \"\$PWD:/work\" -w /work demonnic/muddler)" >&2
+    exit 1
+  fi
+  LOCAL_PKG_ABS="$(cd "$(dirname "$LOCAL_PKG")" && pwd)/$(basename "$LOCAL_PKG")"
+  mkdir -p "$CLIENT_DIR/public"
+  cp "$LOCAL_PKG_ABS" "$CLIENT_DIR/public/f2ce-tools-local.mpackage"
+  VITE_PKG_URL="/f2ce-tools-local.mpackage"
+  # Cache-bust on content, so a rebuilt package is actually re-fetched rather
+  # than served from the profile's memory of the last install.
+  PKG_VERSION="${PKG_VERSION}-local$(shasum -a 1 "$LOCAL_PKG_ABS" | cut -c1-8)"
+  log "installing LOCAL package $LOCAL_PKG_ABS (as version $PKG_VERSION)"
+else
+  # Package URL routed THROUGH the local proxy's /?url= CORS forwarder (same
+  # path prod uses), so the browser fetches same-origin and avoids a CORS
+  # failure fetching the .mpackage straight from GitHub.
+  ENCODED_PKG_URL="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$PKG_RELEASE_URL")"
+  VITE_PKG_URL="http://localhost:${PROXY_PORT}/?url=${ENCODED_PKG_URL}"
+fi
 
 log "starting vite dev server (log: $CLIENT_LOG)"
 (cd "$CLIENT_DIR" && exec env \
@@ -262,8 +314,19 @@ echo
 # not available in macOS's stock bash 3.2).
 while true; do
   if ! kill -0 "$ENGINE_PID" 2>/dev/null; then
-    log "engine process exited unexpectedly — see $ENGINE_LOG"
-    break
+    if [ "$ENGINE_MAY_RESTART" = "1" ]; then
+      # Expected: the operator is exercising the client's game-down handling.
+      # Only say so once, so relaunching doesn't spam the console.
+      if [ "${ENGINE_DOWN_ANNOUNCED:-0}" != "1" ]; then
+        ENGINE_DOWN_ANNOUNCED=1
+        log "engine is down (ENGINE_MAY_RESTART=1) — proxy and client left running"
+      fi
+    else
+      log "engine process exited unexpectedly — see $ENGINE_LOG"
+      break
+    fi
+  else
+    ENGINE_DOWN_ANNOUNCED=0
   fi
   if ! kill -0 "$PROXY_PID" 2>/dev/null; then
     log "proxy process exited unexpectedly — see $PROXY_LOG"

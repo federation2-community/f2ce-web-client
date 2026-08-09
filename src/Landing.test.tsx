@@ -83,20 +83,98 @@ afterEach(() => {
   cleanup();
 });
 
+// Login pre-flights a liveness probe (gameStatus.probeGame) before handing off
+// to the terminal, so a down game never dumps the player into a raw reconnect
+// prompt. `gmcp.negotiated` is the "game is up" signal; emitting it lets the
+// awaited probe settle and the login continue.
+const answerProbeUp = async (index = 0) => {
+  await act(async () => {
+    mockSessions[index].events.emit('gmcp.negotiated');
+  });
+};
+
+// The other half: the proxy closes with 1011 + "Upstream: …" when the game
+// itself refused the connection (a restart window).
+const answerProbeDown = async (index = 0) => {
+  await act(async () => {
+    mockSessions[index].events.emit('close', {
+      code: 1011,
+      reason: 'Upstream: connect ECONNREFUSED 127.0.0.1:30003',
+    });
+  });
+};
+
 describe('Landing', () => {
-  it('logs in a returning player with the entered name and password', () => {
+  it('logs in a returning player with the entered name and password', async () => {
     const p = props();
     render(<Landing {...p} />);
 
     fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Zaphod' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'secret' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'secret' } });
     fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+
+    await answerProbeUp();
 
     expect(p.ensureBrandProfile).toHaveBeenCalledWith('Zaphod');
     expect(p.openProfile).toHaveBeenCalledWith('conn-1', true);
     expect(setSessionCredentials).toHaveBeenCalledWith('conn-1', { account: 'Zaphod', password: 'secret' });
-    // Login never touches the headless-session path.
-    expect(mockSessions).toHaveLength(0);
+    // The probe is the only headless session login opens.
+    expect(mockSessions).toHaveLength(1);
+  });
+
+  it('does not enter the game view when the game is down, and says why', async () => {
+    const p = props();
+    render(<Landing {...p} />);
+
+    fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Zaphod' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+
+    await answerProbeDown();
+
+    // The whole point: no hand-off to the terminal.
+    expect(p.openProfile).not.toHaveBeenCalled();
+    expect(setSessionCredentials).not.toHaveBeenCalled();
+    expect(screen.getByText(/scheduled restart/i)).toBeTruthy();
+    // And the probe cleans up after itself.
+    expect(mockSessions[0].disconnect).toHaveBeenCalled();
+    expect(mockSessions[0].destroy).toHaveBeenCalled();
+  });
+
+  it('distinguishes an unreachable proxy from a down game', async () => {
+    const p = props();
+    render(<Landing {...p} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+    await act(async () => {
+      // No close frame — the socket never opened.
+      mockSessions[0].events.emit('close', { code: 1006, reason: '' });
+    });
+
+    expect(p.openProfile).not.toHaveBeenCalled();
+    expect(screen.getByText(/check your internet connection/i)).toBeTruthy();
+  });
+
+  it('warns that the game is down before the player even types', async () => {
+    render(<Landing {...props()} />);
+
+    // The mount probe is scheduled, not synchronous — nothing is claimed until
+    // it answers, so the form never flashes a banner while it is finding out.
+    expect(screen.queryByText(/scheduled restart/i)).toBeNull();
+
+    await waitFor(() => expect(mockSessions).toHaveLength(1));
+    await answerProbeDown();
+
+    expect(screen.getByText(/scheduled restart/i)).toBeTruthy();
+  });
+
+  it('says nothing on mount when the game is up', async () => {
+    render(<Landing {...props()} />);
+    await waitFor(() => expect(mockSessions).toHaveLength(1));
+    await answerProbeUp();
+
+    expect(screen.queryByText(/scheduled restart/i)).toBeNull();
+    expect(screen.queryByText(/check your internet connection/i)).toBeNull();
   });
 
   it('remembers the last character name and prefills it', () => {
@@ -105,12 +183,141 @@ describe('Landing', () => {
     expect((screen.getByLabelText(/character name/i) as HTMLInputElement).value).toBe('Trillian');
   });
 
-  it('persists the character name on login', () => {
+  it('persists the character name on login', async () => {
     const p = props();
     render(<Landing {...p} />);
     fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Ford' } });
     fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+    await answerProbeUp();
     expect(localStorage.getItem('f2ce:lastCharacter')).toBe('Ford');
+  });
+
+  it('does not remember the character name when the login never happened', async () => {
+    const p = props();
+    render(<Landing {...p} />);
+    fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Ford' } });
+    fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+    await answerProbeDown();
+    expect(localStorage.getItem('f2ce:lastCharacter')).toBeNull();
+  });
+
+  // The password is persisted in plaintext, so the guarantees worth pinning
+  // down are about when it is NOT written, as much as when it is.
+  describe('save my password', () => {
+    const saveBox = () => screen.getByLabelText(/save my password/i) as HTMLInputElement;
+    const passwordField = () => screen.getByLabelText(/^password$/i) as HTMLInputElement;
+
+    it('is off by default and saves nothing', async () => {
+      render(<Landing {...props()} />);
+      expect(saveBox().checked).toBe(false);
+
+      fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Ford' } });
+      fireEvent.change(passwordField(), { target: { value: 'secret' } });
+      fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+      await answerProbeUp();
+
+      expect(localStorage.getItem('f2ce:savedLogin')).toBeNull();
+    });
+
+    it('saves the password only once the login actually goes through', async () => {
+      render(<Landing {...props()} />);
+      fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Ford' } });
+      fireEvent.change(passwordField(), { target: { value: 'secret' } });
+      fireEvent.click(saveBox());
+      fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+
+      // Still nothing while the probe is in flight.
+      expect(localStorage.getItem('f2ce:savedLogin')).toBeNull();
+
+      await answerProbeUp();
+      expect(JSON.parse(localStorage.getItem('f2ce:savedLogin')!)).toEqual({
+        character: 'Ford',
+        password: 'secret',
+      });
+    });
+
+    it('does not save a password for a login that never happened', async () => {
+      render(<Landing {...props()} />);
+      fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Ford' } });
+      fireEvent.change(passwordField(), { target: { value: 'typo' } });
+      fireEvent.click(saveBox());
+      fireEvent.click(screen.getByRole('button', { name: /log in/i }));
+      await answerProbeDown();
+
+      expect(localStorage.getItem('f2ce:savedLogin')).toBeNull();
+    });
+
+    it('prefills a saved password, ticked, for the remembered character', () => {
+      localStorage.setItem('f2ce:lastCharacter', 'Ford');
+      localStorage.setItem(
+        'f2ce:savedLogin',
+        JSON.stringify({ character: 'Ford', password: 'secret' }),
+      );
+      render(<Landing {...props()} />);
+
+      expect(passwordField().value).toBe('secret');
+      expect(saveBox().checked).toBe(true);
+    });
+
+    it('will not hand one character\'s saved password to another', () => {
+      localStorage.setItem('f2ce:lastCharacter', 'Ford');
+      localStorage.setItem(
+        'f2ce:savedLogin',
+        JSON.stringify({ character: 'Ford', password: 'secret' }),
+      );
+      render(<Landing {...props()} />);
+      expect(passwordField().value).toBe('secret');
+
+      fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Zaphod' } });
+      expect(passwordField().value).toBe('');
+
+      // ...and typing the original name back restores it.
+      fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Ford' } });
+      expect(passwordField().value).toBe('secret');
+    });
+
+    it('keeps a password the player typed themselves when the name changes', () => {
+      localStorage.setItem('f2ce:lastCharacter', 'Ford');
+      localStorage.setItem(
+        'f2ce:savedLogin',
+        JSON.stringify({ character: 'Ford', password: 'secret' }),
+      );
+      render(<Landing {...props()} />);
+
+      fireEvent.change(passwordField(), { target: { value: 'a-different-one' } });
+      fireEvent.change(screen.getByLabelText(/character name/i), { target: { value: 'Zaphod' } });
+
+      // Only the untouched prefill gets cleared — this one they entered.
+      expect(passwordField().value).toBe('a-different-one');
+    });
+
+    it('erases the stored password the moment it is unticked', () => {
+      localStorage.setItem('f2ce:lastCharacter', 'Ford');
+      localStorage.setItem(
+        'f2ce:savedLogin',
+        JSON.stringify({ character: 'Ford', password: 'secret' }),
+      );
+      render(<Landing {...props()} />);
+
+      fireEvent.click(saveBox());
+
+      // Not deferred to the next login: closing the tab now must leave nothing.
+      expect(localStorage.getItem('f2ce:savedLogin')).toBeNull();
+    });
+
+    it('states the tradeoff while the box is ticked', () => {
+      render(<Landing {...props()} />);
+      expect(screen.queryByText(/stored unencrypted/i)).toBeNull();
+      fireEvent.click(saveBox());
+      expect(screen.getByText(/stored unencrypted/i)).toBeTruthy();
+    });
+
+    it('survives corrupt or unreadable storage', () => {
+      localStorage.setItem('f2ce:savedLogin', 'not json{');
+      render(<Landing {...props()} />);
+      expect(passwordField().value).toBe('');
+      expect(saveBox().checked).toBe(false);
+    });
   });
 
   it('clicking "Create a new character" opens the creation form without connecting', () => {
@@ -343,6 +550,26 @@ describe('Landing', () => {
       expect(screen.getByRole('heading', { name: /create a new character/i })).toBeTruthy();
     });
 
+    it('stops "Checking availability…" when the game is down instead of spinning forever', () => {
+      const p = props();
+      openCreateForm(p);
+
+      const nameField = screen.getByLabelText(/^character name$/i);
+      fireEvent.change(nameField, { target: { value: 'Trillian' } });
+      fireEvent.blur(nameField);
+
+      expect(screen.getByText(/checking availability/i)).toBeTruthy();
+
+      // The game is down, so no CheckName.Result will ever come back. Before
+      // this had a close handler the field sat on "Checking…" indefinitely.
+      act(() => {
+        mockSessions[0].events.emit('close', { code: 1011, reason: 'Upstream: connect ECONNREFUSED' });
+      });
+
+      expect(screen.queryByText(/checking availability/i)).toBeNull();
+      expect(mockSessions[0].destroy).toHaveBeenCalled();
+    });
+
     it('runs a live CheckName on blur and shows availability, ignoring stale replies', () => {
       const p = props();
       openCreateForm(p);
@@ -492,7 +719,10 @@ describe('Landing', () => {
         await vi.advanceTimersByTimeAsync(8000);
       });
 
-      expect(screen.getByRole('status').textContent).toMatch(/couldn't reach the server/i);
+      // Queried by text, not by role: advancing the clock this far also fires
+      // the mount-time game probe, whose own notice is a second role="status".
+      const notice = screen.getByText(/couldn't reach the server just now/i);
+      expect(notice.getAttribute('role')).toBe('status');
       expect(session.disconnect).toHaveBeenCalled();
       expect(session.destroy).toHaveBeenCalled();
     } finally {
