@@ -50,6 +50,22 @@ phases:
             tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]' | sort -V | tail -1)
           elif [ "$PKG_TRACK" = "prerelease" ]; then
             tag=$(printf '%s\n' "$tags" | grep -E '^[0-9]+\.[0-9]+' | sort -V | tail -1)
+            # Cutting a production release DELETES every pre-release in
+            # f2ce-tools (its build.yml does this deliberately), so the newest
+            # surviving bare tag can be arbitrarily old — after v3.2.4 shipped
+            # it was 2.0.0, two majors behind. Picking it would silently roll
+            # the test client back rather than fail, so fall back to stable
+            # whenever stable is ahead. Ties keep the pre-release: the rolling
+            # bare tag is at-or-ahead of the stable release it shares a number
+            # with.
+            stable=$(printf '%s\n' "$tags" | grep -E '^v[0-9]' | sort -V | tail -1)
+            if [ -n "$stable" ]; then
+              newest=$(printf '%s\n%s\n' "${tag:-0}" "${stable#v}" | sort -V | tail -1)
+              if [ "$newest" = "${stable#v}" ] && [ "${tag:-0}" != "${stable#v}" ]; then
+                echo "NOTE: newest pre-release (${tag:-none}) is behind newest stable ($stable) - using stable"
+                tag="$stable"
+              fi
+            fi
           else
             echo "ERROR: PKG_TRACK must be 'stable' or 'prerelease' (got '$PKG_TRACK')" >&2; exit 1
           fi
