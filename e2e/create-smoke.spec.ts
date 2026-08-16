@@ -116,8 +116,8 @@ test.describe('Char.Create (one-shot GMCP create)', () => {
 
     // f2ce-tools/Muxlet initializes on this fresh login too (the
     // char-burst-on-login path), same signal as stack-smoke.spec.ts.
-    await expect(page.getByText(/Galaxy/i).first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText(/Groats:/i).first()).toBeVisible();
+    await expect(page.getByText(/Groats:/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Rank:/i).first()).toBeVisible();
 
     const cmdInput = page.locator('textarea.command-input');
     await cmdInput.click();
@@ -259,7 +259,7 @@ test.describe('Char.Create (one-shot GMCP create)', () => {
 
     await expect(page.getByText(/Fed2 Community Edition/i).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/You can see .*exit/i).first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/Galaxy/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Groats:/i).first()).toBeVisible({ timeout: 30_000 });
 
     expect(errors, `uncaught page errors: ${errors.join('\n')}`).toHaveLength(0);
 

@@ -12,8 +12,13 @@ import { defineConfig, devices } from '@playwright/test';
 // vite port (it prints the actual URL to use).
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['stack-smoke.spec.ts', 'create-smoke.spec.ts'],
+  testMatch: ['stack-smoke.spec.ts', 'create-smoke.spec.ts', 'no-update-prompt.spec.ts'],
   timeout: 60_000,
+  // Serial. These specs share one live fed2d and, mostly, one character —
+  // parallel workers log the same name in twice and the loser's session never
+  // reaches f2ce-tools init, which surfaces as an unrelated-looking timeout on
+  // whichever UI assertion came first.
+  workers: 1,
   use: {
     baseURL: process.env.STACK_URL ?? 'http://localhost:5173',
   },

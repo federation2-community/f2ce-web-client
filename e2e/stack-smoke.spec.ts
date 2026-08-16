@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
  * That message is the most reliable init signal available without coupling
  * this test to mudlet-web's internal (minified, no test-ids) DOM structure.
  * As a secondary, DOM-based check we also assert a couple of f2ce-tools UI
- * elements (the player's Groats/Rank readout and the Galaxy button) render.
+ * elements (the player's Groats/Rank readout) render.
  *
  * TODO: if a future mudlet-web/f2ce-tools release exposes a stable
  * data-testid for "Muxlet is ready", prefer that over the text assertions
@@ -45,11 +45,17 @@ test('logs in against the local stack and Muxlet/f2ce-tools initializes', async 
   // --- Muxlet/f2ce-tools: web onboarding auto-installs+enables on first
   // run (see fed2-web-client-integration memory) by downloading a package
   // over the network (through the proxy's CORS forwarder), so this takes a
-  // few real seconds. Wait for its UI (the Galaxy button, part of
+  // few real seconds. Wait for its UI (the Groats/Rank readout, part of
   // f2ce-tools' toolbar) rather than racing it — this is the DOM-based
-  // "Muxlet is ready" signal. ---
-  await expect(page.getByText(/Galaxy/i).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/Groats:/i).first()).toBeVisible();
+  // "Muxlet is ready" signal.
+  //
+  // This used to wait on the Galaxy button. f2ce-tools 896e105 reduced that
+  // button to a bare icon, so its label left the DOM and every spec waiting
+  // on /Galaxy/i began timing out. Prefer readouts that carry a literal
+  // label; an icon-only control is one redesign away from silently breaking
+  // the gate. ---
+  await expect(page.getByText(/Groats:/i).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Rank:/i).first()).toBeVisible();
 
   // --- Confirm via the command input too (the same path a real player
   // would use to check f2t's state), now that init has had time to finish. ---
