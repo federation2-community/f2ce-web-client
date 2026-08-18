@@ -21,8 +21,9 @@
 #   VITE_PORT           vite dev server port                  (default: 5173, vite bumps if busy)
 #   PKG_URL             f2ce-tools .mpackage release URL to install, forwarded
 #                        through the local proxy's CORS forwarder
-#                        (default: the 3.2.4 f2ce-tools release)
-#   PKG_VERSION         version string reported to mudlet-web  (default: 3.2.4)
+#                        (default: the newest STABLE f2ce-tools release,
+#                        resolved via git ls-remote -- see below)
+#   PKG_VERSION         version string reported to mudlet-web  (default: newest stable)
 #   LOCAL_PKG           path to a .mpackage built from your own fed2-tools
 #                        working tree, installed INSTEAD of the published
 #                        release (see "Testing local f2ce-tools" below)
@@ -89,8 +90,34 @@ PROXY_PORT="${PROXY_PORT:-3001}"
 VITE_PORT="${VITE_PORT:-5173}"
 ENGINE_WAIT_SECS="${ENGINE_WAIT_SECS:-90}"
 ENGINE_MAY_RESTART="${ENGINE_MAY_RESTART:-0}"
-PKG_VERSION="${PKG_VERSION:-3.2.4}"
-PKG_RELEASE_URL="${PKG_URL:-https://github.com/federation2-community/f2ce-tools/releases/download/${PKG_VERSION}/f2ce-tools.mpackage}"
+# Resolve the newest STABLE f2ce-tools tag rather than pinning a literal.
+#
+# Pinning was a trap: the old default was the BARE tag "3.2.4", and cutting a
+# production release DELETES every bare pre-release tag in f2ce-tools (its
+# build.yml does this deliberately). So the default URL 404'd the moment v3.2.4
+# shipped -- the stack came up, mudlet-web silently failed to install
+# f2ce-tools, Muxlet never booted, and every stack e2e spec failed on its first
+# UI assertion with no hint that a download was the cause.
+#
+# git ls-remote, not the GitHub REST API: unauthenticated api.github.com calls
+# get rate-limited, ls-remote does not and needs no credentials. Same reasoning
+# and same tag convention as buildspec.yml (stable = v-prefixed).
+if [ -z "${PKG_VERSION:-}" ] && [ -z "${PKG_URL:-}" ] && [ -z "${LOCAL_PKG:-}" ]; then
+  _pkg_tag="$(git ls-remote --tags --refs https://github.com/federation2-community/f2ce-tools 2>/dev/null \
+              | sed 's#.*refs/tags/##' | grep -E '^v[0-9]' | sort -V | tail -1)"
+  if [ -n "$_pkg_tag" ]; then
+    PKG_VERSION="${_pkg_tag#v}"
+    # The manifest version is plain semver but the download path keeps the "v".
+    PKG_URL="https://github.com/federation2-community/f2ce-tools/releases/download/${_pkg_tag}/f2ce-tools.mpackage"
+    echo "dev-stack: resolved newest stable f2ce-tools: $_pkg_tag"
+  else
+    echo "dev-stack: could not resolve the newest f2ce-tools tag (network?)." >&2
+    echo "dev-stack: set PKG_VERSION + PKG_URL, or LOCAL_PKG, to override." >&2
+    exit 1
+  fi
+fi
+PKG_VERSION="${PKG_VERSION:-0.0.0}"
+PKG_RELEASE_URL="${PKG_URL:-https://github.com/federation2-community/f2ce-tools/releases/download/v${PKG_VERSION}/f2ce-tools.mpackage}"
 
 LOG_DIR="$CLIENT_DIR/.dev-stack-logs"
 mkdir -p "$LOG_DIR"
