@@ -1,0 +1,91 @@
+name: Update f2ce-tools
+
+# Pins the f2ce-tools production release the web client ships by writing its tag
+# to f2ce-tools.version and pushing that to master. The push is what deploys:
+# the prod CodeBuild project builds on every master push, and buildspec.yml
+# installs the pinned tag. Run by hand, or dispatched by f2ce-tools' own
+# production release pipeline.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to pin (e.g. v3.4.0). Leave blank for the newest production release."
+        required: false
+        type: string
+      redeploy:
+        description: "Push even if that version is already pinned, to force a fresh deploy."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-f2ce-tools
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v7
+        with:
+          ref: master
+
+      - name: Resolve release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          repo="federation2-community/f2ce-tools"
+          # Production releases only: v-prefixed, published, not pre-release,
+          # and carrying the .mpackage the client downloads.
+          releases=$(gh api --paginate "repos/${repo}/releases?per_page=100" --jq '
+            .[] | select(.draft | not) | select(.prerelease | not)
+                | select(.tag_name | test("^v[0-9]"))
+                | select(any(.assets[]; .name == "f2ce-tools.mpackage"))
+                | .tag_name')
+
+          if [ -n "$REQUESTED" ]; then
+            tag="v${REQUESTED#v}"
+            printf '%s\n' "$releases" | grep -qxF "$tag" || {
+              echo "::error::$tag is not a published f2ce-tools production release with an f2ce-tools.mpackage asset"
+              exit 1
+            }
+          else
+            # Highest version, not most recent: a later hotfix to an older line
+            # must not roll the client back.
+            tag=$(printf '%s\n' "$releases" | sort -V | tail -1)
+            [ -n "$tag" ] || { echo "::error::No f2ce-tools production release found"; exit 1; }
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved f2ce-tools $tag"
+
+      - name: Pin and push
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          REDEPLOY: ${{ inputs.redeploy }}
+        run: |
+          set -euo pipefail
+          current=$(cat f2ce-tools.version 2>/dev/null || true)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if [ "$current" = "$TAG" ]; then
+            if [ "$REDEPLOY" != "true" ]; then
+              echo "f2ce-tools $TAG is already pinned; nothing to deploy." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            git commit --allow-empty -m "Redeploy with f2ce-tools $TAG"
+          else
+            printf '%s\n' "$TAG" > f2ce-tools.version
+            git add f2ce-tools.version
+            git commit -m "Ship f2ce-tools $TAG"
+          fi
+          git push origin HEAD:master
+          echo "Pushed f2ce-tools $TAG to master (was: ${current:-unpinned}); CodeBuild deploys from here." >> "$GITHUB_STEP_SUMMARY"

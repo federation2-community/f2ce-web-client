@@ -27,6 +27,19 @@ Set in `.env` (see `.env.example`). These bake into the static build:
   CodeBuild project so Google Analytics fires on `client.federation2.com`;
   leave it unset on the test project and locally, where the loader no-ops.
 
+## Shipping a new f2ce-tools release
+
+The prod build installs the tag in `f2ce-tools.version` (under
+`PKG_TRACK=stable`; newest production release if the file is missing). The
+**Update f2ce-tools** workflow (`.github/workflows/update-f2ce-tools.yml`)
+writes that file and pushes to `master`, which triggers the prod CodeBuild
+deploy. It runs:
+
+- automatically, dispatched by f2ce-tools' production release pipeline, or
+- by hand from the Actions tab: leave `version` blank for the newest production
+  release, give a tag (e.g. `v3.4.0`) to pin or roll back, or tick `redeploy`
+  to rebuild without changing the version.
+
 ## Redeploy (manual)
 
 ```bash

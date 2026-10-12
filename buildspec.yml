@@ -11,7 +11,8 @@ version: 0.2
 # Plus ONE of:
 #   PKG_TRACK=stable|prerelease  -> resolve the f2ce-tools version+URL from the
 #                                   GitHub Releases API at build time (newest
-#                                   release of that channel), OR
+#                                   release of that channel; stable uses the
+#                                   tag in f2ce-tools.version when present), OR
 #   VITE_PKG_URL + VITE_PKG_VERSION -> pin an exact package (legacy/manual).
 #
 #   test project  (webhook: test branch)   -> client-test.federation2.com, ws-test, PKG_TRACK=prerelease
@@ -47,7 +48,11 @@ phases:
           repo="https://github.com/federation2-community/f2ce-tools"
           tags=$(git ls-remote --tags --refs "$repo" | sed 's#.*refs/tags/##')
           if [ "$PKG_TRACK" = "stable" ]; then
-            tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]' | sort -V | tail -1)
+            # f2ce-tools.version (written by the "Update f2ce-tools" workflow)
+            # pins the exact release; without it, take the newest.
+            tag=""
+            [ -f f2ce-tools.version ] && tag=$(tr -d '[:space:]' < f2ce-tools.version)
+            [ -n "$tag" ] || tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]' | sort -V | tail -1)
           elif [ "$PKG_TRACK" = "prerelease" ]; then
             tag=$(printf '%s\n' "$tags" | grep -E '^[0-9]+\.[0-9]+' | sort -V | tail -1)
             # Cutting a production release DELETES every pre-release in
