@@ -47,8 +47,12 @@ npm run build
 AWS_PROFILE=fed S3_BUCKET=client.federation2.com CF_DIST_ID=E3AT4FJ48938JC bash scripts/deploy.sh
 ```
 
-`scripts/deploy.sh` syncs `dist/` to the bucket (two-pass, so `.wasm` keeps
-`Content-Type: application/wasm`) and invalidates the distribution.
+`scripts/deploy.sh` syncs `dist/` to the bucket via `scripts/sync-dist.sh` and
+invalidates the distribution. The sync keeps `.wasm` as
+`Content-Type: application/wasm` and sets cache headers: hashed `assets/` are
+`immutable`, everything else (notably `index.html`) is `no-cache`, so browsers
+pick up a new deploy, and the f2ce-tools version baked into it, on their next
+load.
 
 ## Test → prod flip
 
@@ -67,7 +71,7 @@ there.)
 Deploys the same way `fedWeb`/the game do: a **GitHub callback triggers AWS
 CodeBuild**, which builds and deploys **in-account under its IAM service role**
 — no GitHub-side AWS credentials (no OIDC provider, no access keys). The build
-recipe is `buildspec.yml` (build → two-pass S3 sync → CloudFront invalidation).
+recipe is `buildspec.yml` (build → `scripts/sync-dist.sh` → CloudFront invalidation).
 
 To wire it (one-time, AWS side):
 1. Create a CodeBuild project (or CodePipeline with a GitHub source) pointed at
