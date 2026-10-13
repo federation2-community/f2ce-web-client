@@ -96,9 +96,8 @@ phases:
           eval "val=\${$v:-}"
           [ -n "$val" ] || { echo "ERROR: $v not set on the CodeBuild project" >&2; exit 1; }
         done
-      # Two-pass sync so .wasm keeps its content-type (wasmoon/PCRE2 need it).
-      - aws s3 sync dist/ "s3://$S3_BUCKET/" --delete --exclude '*.wasm'
-      - aws s3 sync dist/ "s3://$S3_BUCKET/" --exclude '*' --include '*.wasm' --content-type application/wasm
+      # Cache headers and .wasm content-type: see scripts/sync-dist.sh.
+      - bash scripts/sync-dist.sh dist
       - aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths '/*'
 
 artifacts:
